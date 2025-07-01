@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dashboard Geral - CDM-MB</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Chart.js para gráficos -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <!-- jsPDF para exportação de PDF -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Sharp" rel="stylesheet">
+    <style>
+        :root { --sidebar-width: 250px; --sidebar-width-collapsed: 80px; }
+        body { background-color: #f3f4f6; font-family: 'Inter', sans-serif; }
+        .main-content { transition: margin-left 0.3s ease; margin-left: var(--sidebar-width-collapsed); }
+        .sidebar { width: var(--sidebar-width); transition: width 0.3s ease, transform 0.3s ease; }
+        .sidebar.collapsed { width: var(--sidebar-width-collapsed); }
+        .sidebar.collapsed .nav-text, .sidebar.collapsed .long-title { display: none; }
+        @media (max-width: 768px) {
+            .main-content { margin-left: 0; }
+            .sidebar { transform: translateX(-100%); width: var(--sidebar-width); }
+            .sidebar.show { transform: translateX(0); }
+            .sidebar.show .nav-text, .sidebar.show .long-title { display: inline; }
+            .sidebar.collapsed { width: var(--sidebar-width); }
+        }
+
+        .action-button { padding: 0.5rem 1rem; border-radius: 0.375rem; font-weight: 600; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; justify-content: center; }
+        .btn-primary { background-color: #4f46e5; color: white; } .btn-primary:hover { background-color: #4338ca; }
+        .btn-secondary { background-color: #6b7280; color: white; } .btn-secondary:hover { background-color: #4b5563; }
+        .btn-gemini { background: linear-gradient(to right, #4f46e5, #9333ea); color: white; } .btn-gemini:hover { background: linear-gradient(to right, #4338ca, #7e22ce); }
+        .btn-export-pdf { background-color: #ef4444; color: white; } .btn-export-pdf:hover { background-color: #dc2626; }
+        .btn-export-txt { background-color: #06b6d4; color: white; } .btn-export-txt:hover { background-color: #0891b2; }
+        .action-button:disabled { background-color: #9ca3af; cursor: not-allowed; }
+        .filter-button.active { background-color: #4f46e5; color: white; }
+        .filter-button { background-color: #e5e7eb; color: #374151; }
+        .card { background-color: white; border-radius: 0.75rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1); padding: 1.5rem; }
+        
+        .modal-overlay { position: fixed; inset: 0; background-color: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1050; opacity: 0; visibility: hidden; transition: opacity 0.3s, visibility 0.3s; }
+        .modal-overlay.show { opacity: 1; visibility: visible; }
+        .modal-content { background-color: white; padding: 1.5rem 2rem; border-radius: 0.5rem; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); width: 90%; max-width: 800px; transform: scale(0.95); transition: transform 0.3s; }
+        .modal-overlay.show .modal-content { transform: scale(1); }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.75rem; margin-bottom: 1rem; }
+        .modal-title { font-size: 1.25rem; font-weight: 600; color: #1f2937; }
+        .modal-close-button { background: none; border: none; font-size: 1.5rem; line-height: 1; cursor: pointer; color: #9ca3af; } .modal-close-button:hover{color: #4b5563;}
+
+        #loadingOverlay { display: none; position: fixed; inset: 0; background-color: rgba(255, 255, 255, 0.7); z-index: 9999; }
+        #loadingSpinner { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); border: 5px solid #f3f3f3; border-top: 5px solid #4f46e5; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: translate(-50%, -50%) rotate(0deg); } 100% { transform: translate(-50%, -50%) rotate(360deg); } }
+    </style>
+</head>
+<body class="bg-gray-200">
+    <div id="loadingOverlay"><div id="loadingSpinner"></div></div>
+
+    <!-- SIDEBAR -->
+       <!-- SIDEBAR -->
+    <aside id="sidebar" class="sidebar bg-gray-800 text-white h-screen fixed top-0 left-0 z-40 flex flex-col collapsed">
+        <div class="p-4 flex items-center justify-between h-16 border-b border-gray-700">
+            <h1 class="text-2xl font-bold whitespace-nowrap overflow-hidden">
+                <span class="long-title">CDM - MB</span>
+            </h1>
+            <button id="close-sidebar" class="text-gray-400 hover:text-white md:hidden text-3xl leading-none">&times;</button>
+        </div>
+        <nav class="flex-grow p-2 overflow-y-auto">
+            <ul>
+                <li>
+                    <a href="index_geral.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Página Inicial">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m0 0l7 7m-7-7v10a1 1 0 01-1 1H6a1 1 0 01-1-1v-10"></path></svg>
+                        <span class="ml-4 nav-text">Página Inicial</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="absenteismo.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Absenteísmo">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.225-1.26-.623-1.741M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 0c-2.21 0-4 2.24-4 5v2h8v-2c0-2.76-1.79-5-4-5z"></path></svg>
+                        <span class="ml-4 nav-text">Absenteísmo</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="dashboard.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Dashboard">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                        <span class="ml-4 nav-text">Dashboard</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="status_t1.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Status Máquinas">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                        <span class="ml-4 nav-text">Status 1ºT</span>
+                    </a>
+                </li>
+                 <li>
+                    <a href="status.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Status Máquinas">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                        <span class="ml-4 nav-text">Status 2ºT</span>
+                    </a>
+                </li>
+                 <li>
+                    <a href="status_t3.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Status Máquinas">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                        <span class="ml-4 nav-text">Status 3ºT</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="cadastro-detalhado.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Cadastro Máquinas/Moldes">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8H4a2 2 0 01-2-2v-4A2 2 0 014 12h2m-2 4h4m5-4h5a2 2 0 012 2v4a2 2 0 01-2 2h-5m-2-4H9m2 2h2"></path></svg>
+                        <span class="ml-4 nav-text">Cadastro Detalhado</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="analise_causa_raiz.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Análise de Causa Raiz">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                        <span class="ml-4 nav-text">Análise de Causa Raiz</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="ordens_servico.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Ordens de Serviço">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
+                        <span class="ml-4 nav-text">Ordens de Serviço</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="gestao_qualidade.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Gestão de Qualidade">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        <span class="ml-4 nav-text">Gestão de Qualidade</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="dashboard_qualidade.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Dashboard de Qualidade">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z"></path></svg>
+                        <span class="ml-4 nav-text">Dashboard de Qualidade</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="gestao_manutencao.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Gestão de Manutenção">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.096 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                        <span class="ml-4 nav-text">Gestão de Manutenção</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="gestao_estoque.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Gestão de Estoque">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"></path></svg>
+                        <span class="ml-4 nav-text">Gestão de Estoque</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="dashboard_geral_consolidado.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Dashboard Geral Consolidado">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v8m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v12a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                        <span class="ml-4 nav-text">Dashboard Geral</span>
+                    </a>
+                </li>
+            </ul>
+        </nav>
+        <div class="p-2 border-t border-gray-700">
+            <a href="#" id="settings-button" class="flex items-center p-3 rounded-lg hover:bg-gray-700" title="Configurações">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.096 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                <span class="ml-4 nav-text">Configurações</span>
+            </a>
+        </div>
+    </aside>
+    <div id="sidebar-overlay" class="fixed inset-0 bg-black bg-opacity-50 z-30 hidden md:hidden"></div>
+
+    <!-- MAIN CONTENT WRAPPER -->
+    <div class="main-content">
+        <!-- HEADER -->
+        <header class="bg-white shadow-md sticky top-0 z-20 h-16 flex items-center px-6">
+            <button id="menu-button" class="p-2 text-gray-500 rounded-md -ml-2 mr-2"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg></button>
+            <h1 class="text-xl font-semibold text-gray-800"><span class="hidden sm:inline">Ciclos Diários de Máquinas - MB</span><span class="sm:hidden">CDM - MB</span></h1>
+        </header>
+
+        <!-- DASHBOARD CONTENT -->
+        <main class="p-4 sm:p-6 lg:p-8">
+            <h1 class="text-3xl font-bold text-gray-900 mb-6">Análise de Gargalos e Eficiência (2º e 3º Turnos)</h1>
+            <div class="card mb-6">
+                <h2 class="text-lg font-semibold text-gray-800 mb-4">Filtrar Período de Análise</h2>
+                <div class="flex flex-wrap items-center gap-4">
+                    <div id="quick-filters" class="flex flex-wrap gap-2"><button class="action-button filter-button" data-period="today">Hoje</button><button class="action-button filter-button" data-period="week">Esta Semana</button><button class="action-button filter-button" data-period="month">Este Mês</button><button class="action-button filter-button" data-period="semester">Este Semestre</button></div>
+                    <div class="flex items-center gap-2"><input type="date" id="startDate" class="form-input p-2 border rounded-md"><span class="text-gray-600">até</span><input type="date" id="endDate" class="form-input p-2 border rounded-md"></div>
+                    <button id="apply-filter" class="action-button btn-primary">Aplicar Filtro</button>
+                    <button id="analyze-with-ai" class="action-button btn-gemini" disabled>✨ Analisar Relatório com IA</button>
+                </div>
+            </div>
+            <div id="dashboard-grid" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div class="card lg:col-span-2"><h3 class="text-xl font-semibold text-gray-800 mb-4">Desvio Médio de Ciclo por Máquina</h3><p class="text-sm text-gray-500 mb-4">Valores positivos indicam lentidão. <strong class="text-indigo-600">Clique em uma barra para análise de causa raiz.</strong></p><canvas id="gargalosChart"></canvas></div>
+                <div class="card"><h3 class="text-xl font-semibold text-gray-800 mb-4">Frequência de Registros por Máquina</h3><canvas id="frequenciaChart" style="max-height: 350px;"></canvas></div>
+                <div class="card"><h3 class="text-xl font-semibold text-gray-800 mb-4">Tendência de Eficiência Diária</h3><p class="text-sm text-gray-500 mb-4">Média de desvio de ciclo de todas as máquinas ao longo do tempo.</p><canvas id="tendenciaChart"></canvas></div>
+            </div>
+            <div class="card mt-6">
+                 <h2 class="text-lg font-semibold text-gray-800 mb-4">Exportar Relatório do Dashboard</h2>
+                 <div class="flex flex-wrap gap-4"><button id="export-pdf" class="action-button btn-export-pdf" disabled>Exportar para PDF</button><button id="export-txt" class="action-button btn-export-txt" disabled>Exportar para TXT</button></div>
+            </div>
+        </main>
+    </div>
+
+    <!-- MODALS -->
+    <div id="modal-ai" class="modal-overlay"> <div class="modal-content"><div class="modal-header"><h2 class="modal-title">✨ Análise Geral e Sugestões da IA</h2><button class="modal-close-button" data-close-modal-id="modal-ai">&times;</button></div><div id="ai-result-content" class="prose max-w-none max-h-[60vh] overflow-y-auto text-gray-700"></div><div id="ai-export-buttons" class="mt-4 pt-4 border-t flex justify-end gap-3 hidden"><button onclick="exportarAnaliseTXT('general')" class="action-button btn-secondary">Exportar TXT</button><button onclick="exportarAnalisePDF('general')" class="action-button btn-red">Exportar PDF</button></div></div></div>
+    <div id="modal-rca" class="modal-overlay"><div class="modal-content"><div class="modal-header"><h2 id="rca-modal-title" class="modal-title">✨ Análise de Causa Raiz</h2><button class="modal-close-button" data-close-modal-id="modal-rca">&times;</button></div><div id="rca-result-content" class="prose max-w-none max-h-[60vh] overflow-y-auto text-gray-700"></div><div id="rca-export-buttons" class="mt-4 pt-4 border-t flex justify-end gap-3 hidden"><button onclick="exportarAnaliseTXT('rca')" class="action-button btn-secondary">Exportar TXT</button><button onclick="exportarAnalisePDF('rca')" class="action-button btn-red">Exportar PDF</button></div></div></div>
+    <div id="modal-settings" class="modal-overlay"><div class="modal-content max-w-lg"><div class="modal-header"><h2 class="modal-title">Configurações</h2><button class="modal-close-button" data-close-modal-id="modal-settings">&times;</button></div><div><label for="gemini-api-key" class="block text-sm font-medium text-gray-700 mb-1">Sua Chave API Google Gemini</label><input type="password" id="gemini-api-key" class="w-full p-2 border rounded-md mb-2" placeholder="Cole sua chave aqui"><button id="save-api-key" class="action-button btn-primary w-full mb-4">Salvar Chave</button><div class="text-center"><button id="show-tutorial" class="text-indigo-600 hover:underline text-sm">Como Obter Chave API?</button></div></div></div></div>
+    <div id="modal-tutorial" class="modal-overlay"><div class="modal-content"><div class="modal-header"><h2 class="modal-title">Como Obter sua Chave API do Google Gemini</h2><button class="modal-close-button" data-close-modal-id="modal-tutorial">&times;</button></div><div class="prose max-w-none text-gray-700"><p>Para utilizar todas as funcionalidades de análise por IA, você precisará de uma Chave API do Google Gemini. O Gemini 1.5 Flash, que é necessária, oferece um nível gratuito generoso.</p><h4>Passo 1: Acesse o Google AI Studio</h4><p>Se você ainda não tem uma conta Google, precisará criar uma. Depois, acesse o Google AI Studio:</p><a href="https://aistudio.google.com/app/apikey" target="_blank" class="action-button btn-primary">Ir para o Google AI Studio &rarr;</a><h4 class="mt-4">Passo 2: Gere sua Chave API</h4><ul><li>Procure pela opção "Get API key" ou "Criar chave API".</li><li>Clique em "Create API key in new project".</li><li>Siga as instruções para nomear seu projeto, se necessário.</li><li>Após a criação, sua chave API será exibida.</li></ul><h4>Passo 3: Copie e Cole sua Chave API</h4><ul><li>Clique no botão para copiar sua chave API.</li><li>Volte para esta página (dentro do modal de Configurações).</li><li>Cole a chave no campo "Sua Chave API Google Gemini".</li><li>Clique em "Salvar".</li></ul><p class="font-semibold mt-4">Importante: Guarde sua chave API em um local seguro e não a compartilhe publicamente.</p></div><div class="mt-6 text-center"><button class="action-button btn-secondary" data-close-modal-id="modal-tutorial">Entendi - Fechar Tutorial</button></div></div></div>
+
+<script>
+// --- SUPABASE CLIENT ---
+const SUPABASE_URL = 'https://ranhhacbgyfpzrjdynnd.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJhbmhoYWNiZ3lmcHpyamR5bm5kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDM5MDU4OTEsImV4cCI6MjA1OTQ4MTg5MX0.Ey-X4Tz8krKHSICnYdHdBaI3q5WcRgUVwA8jOhfMr7Y';
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// --- GLOBAL VARIABLES ---
+let gargalosChartInstance, frequenciaChartInstance, tendenciaChartInstance;
+let processedDataCache = null;
+let allRecordsCache = [];
+
+// --- DOM ELEMENTS ---
+const loadingOverlay = document.getElementById('loadingOverlay');
+const startDateInput = document.getElementById('startDate');
+const endDateInput = document.getElementById('endDate');
+const applyFilterBtn = document.getElementById('apply-filter');
+const quickFiltersContainer = document.getElementById('quick-filters');
+const analyzeWithAiBtn = document.getElementById('analyze-with-ai');
+const exportPdfBtn = document.getElementById('export-pdf');
+const exportTxtBtn = document.getElementById('export-txt');
+
+// --- UTILITY FUNCTIONS ---
+const showLoading = (isLoading) => { loadingOverlay.style.display = isLoading ? 'flex' : 'none'; };
+const formatDate = (date) => date.toISOString().split('T')[0];
+const setDateInputs = (start, end) => { startDateInput.value = formatDate(start); endDateInput.value = formatDate(end); };
+
+// --- LAYOUT AND MODAL SETUP ---
+function setupAppLayout() {
+    const sidebar = document.getElementById('sidebar');
+    const menuButton = document.getElementById('menu-button');
+    const closeSidebarButton = document.getElementById('close-sidebar');
+    const sidebarOverlay = document.getElementById('sidebar-overlay');
+    
+    menuButton.addEventListener('click', () => {
+        if (window.innerWidth < 768) {
+            sidebar.classList.remove('collapsed');
+            sidebar.classList.add('show');
+            sidebarOverlay.classList.remove('hidden');
+        } else {
+            sidebar.classList.toggle('collapsed');
+            document.querySelector('.main-content').style.marginLeft = sidebar.classList.contains('collapsed') ? 'var(--sidebar-width-collapsed)' : 'var(--sidebar-width)';
+        }
+    });
+    closeSidebarButton.addEventListener('click', () => {
+        sidebar.classList.remove('show');
+        sidebarOverlay.classList.add('hidden');
+    });
+    sidebarOverlay.addEventListener('click', () => {
+        sidebar.classList.remove('show');
+        sidebarOverlay.classList.add('hidden');
+    });
+    
+    document.body.addEventListener('click', (e) => {
+        if (e.target.dataset.closeModalId) {
+            document.getElementById(e.target.dataset.closeModalId).classList.remove('show');
+        }
+    });
+    
+    const settingsBtn = document.getElementById('settings-button');
+    if (settingsBtn) {
+        settingsBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            document.getElementById('modal-settings').classList.add('show');
+        });
+    }
+
+    const tutorialBtn = document.getElementById('show-tutorial');
+    if (tutorialBtn) {
+        tutorialBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            document.getElementById('modal-tutorial').classList.add('show');
+        });
+    }
+
+    const apiKeyInput = document.getElementById('gemini-api-key');
+    const saveApiKeyBtn = document.getElementById('save-api-key');
+    if (apiKeyInput) apiKeyInput.value = localStorage.getItem('geminiApiKey') || '';
+    if (saveApiKeyBtn) saveApiKeyBtn.addEventListener('click', () => {
+        const key = apiKeyInput.value.trim();
+        if (key) {
+            localStorage.setItem('geminiApiKey', key);
+            alert('Chave API salva com sucesso!');
+            document.getElementById('modal-settings').classList.remove('show');
+        } else {
+            alert('Por favor, insira uma chave API válida.');
+        }
+    });
+}
+
+// --- CHART RENDERING ---
+function renderCharts(processedData) {
+    if (!processedData) return;
+    processedDataCache = processedData;
+    destroyCharts();
+    renderGargalosChart(processedData.byMachine);
+    renderFrequenciaChart(processedData.byMachine);
+    renderTendenciaChart(processedData.byDay);
+    analyzeWithAiBtn.disabled = false;
+    exportPdfBtn.disabled = false;
+    exportTxtBtn.disabled = false;
+}
+function destroyCharts() {
+    if (gargalosChartInstance) gargalosChartInstance.destroy();
+    if (frequenciaChartInstance) frequenciaChartInstance.destroy();
+    if (tendenciaChartInstance) tendenciaChartInstance.destroy();
+}
+function renderGargalosChart(data) {
+    const ctx = document.getElementById('gargalosChart').getContext('2d');
+    const labels = Object.keys(data);
+    const chartData = labels.map(label => data[label].avgDeviation);
+    const backgroundColors = chartData.map(value => value > 0 ? 'rgba(239, 68, 68, 0.6)' : 'rgba(34, 197, 94, 0.6)');
+    const borderColors = chartData.map(value => value > 0 ? 'rgba(239, 68, 68, 1)' : 'rgba(34, 197, 94, 1)');
+    gargalosChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: { labels, datasets: [{ label: 'Desvio Médio de Ciclo (s)', data: chartData, backgroundColor: backgroundColors, borderColor: borderColors, borderWidth: 1 }] },
+        options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true, title: { display: true, text: 'Segundos (s)' } } },
+            onClick: (event, elements) => { if (elements.length > 0) analisarCausaRaiz(labels[elements[0].index]); },
+            onHover: (event, chartElement) => { event.native.target.style.cursor = chartElement[0] ? 'pointer' : 'default'; }
+        }
+    });
+}
+function renderFrequenciaChart(data) {
+    const ctx = document.getElementById('frequenciaChart').getContext('2d');
+    const labels = Object.keys(data);
+    const chartData = labels.map(label => data[label].count);
+    frequenciaChartInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: { labels, datasets: [{ label: 'Nº de Registros', data: chartData, backgroundColor: ['rgba(79, 70, 229, 0.7)', 'rgba(219, 39, 119, 0.7)', 'rgba(245, 158, 11, 0.7)', 'rgba(16, 185, 129, 0.7)', 'rgba(99, 102, 241, 0.7)', 'rgba(234, 88, 12, 0.7)'], hoverOffset: 4 }] },
+        options: { responsive: true, plugins: { legend: { position: 'top' } } }
+    });
+}
+function renderTendenciaChart(data) {
+    const ctx = document.getElementById('tendenciaChart').getContext('2d');
+    tendenciaChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: { datasets: [{ label: 'Desvio Médio Diário', data: data, fill: false, borderColor: 'rgb(75, 192, 192)', tension: 0.1 }] },
+        options: {
+            responsive: true,
+            scales: {
+                x: { type: 'time', time: { unit: 'day', tooltipFormat: 'dd/MM/yyyy' }, title: { display: true, text: 'Data' } },
+                y: { title: { display: true, text: 'Desvio Médio (s)' } }
+            }
+        }
+    });
+}
+
+
+// --- DATA FETCHING & PROCESSING ---
+async function fetchAndProcessData(startDate, endDate) {
+    showLoading(true);
+    destroyCharts();
+    try {
+        const fetchT2 = supabaseClient.from('status_maquinas').select('*').gte('data', startDate).lte('data', endDate);
+        const fetchT3 = supabaseClient.from('status_maquinas_t3').select('*').gte('data', startDate).lte('data', endDate);
+        
+        const [responseT2, responseT3] = await Promise.all([fetchT2, fetchT3]);
+
+        if (responseT2.error) throw new Error(`Erro ao buscar dados do 2º Turno: ${responseT2.error.message}`);
+        if (responseT3.error) throw new Error(`Erro ao buscar dados do 3º Turno: ${responseT3.error.message}`);
+        
+        const dataT2 = responseT2.data.map(d => ({ ...d, turno: '2º Turno' }));
+        const dataT3 = responseT3.data.map(d => ({ ...d, turno: '3º Turno' }));
+        
+        allRecordsCache = [...dataT2, ...dataT3];
+        
+        if (allRecordsCache.length === 0) {
+            alert('Nenhum dado encontrado para o período selecionado em ambos os turnos.');
+            return null;
+        }
+
+        const dataByMachine = {};
+        const dataByDay = {};
+
+        allRecordsCache.forEach(item => {
+            const machine = item.nome_maquina;
+            const deviation = parseFloat(item.ciclo_atual) - parseFloat(item.ciclo_padrao);
+            const date = item.data;
+
+            if (!dataByMachine[machine]) { dataByMachine[machine] = { totalDeviation: 0, count: 0, observations: [] }; }
+            dataByMachine[machine].totalDeviation += deviation;
+            dataByMachine[machine].count++;
+            if (item.observacoes) dataByMachine[machine].observations.push(`(T${item.turno[0]}) ${item.observacoes}`);
+
+            if (!dataByDay[date]) { dataByDay[date] = { totalDeviation: 0, count: 0 }; }
+            dataByDay[date].totalDeviation += deviation;
+            dataByDay[date].count++;
+        });
+
+        for (const machine in dataByMachine) {
+            dataByMachine[machine].avgDeviation = dataByMachine[machine].totalDeviation / dataByMachine[machine].count;
+        }
+        
+        const trendData = Object.keys(dataByDay).sort((a,b) => new Date(a) - new Date(b)).map(date => ({
+            x: date,
+            y: dataByDay[date].totalDeviation / dataByDay[date].count
+        }));
+
+        return { byMachine: dataByMachine, byDay: trendData };
+
+    } catch (err) {
+        console.error("Erro ao buscar dados consolidados:", err);
+        alert("Falha ao carregar dados do dashboard. Verifique o console.");
+        return null;
+    } finally {
+        showLoading(false);
+    }
+}
+
+
+// --- EVENT LISTENERS ---
+document.addEventListener('DOMContentLoaded', () => {
+    setupAppLayout();
+    handleQuickFilter({ target: quickFiltersContainer.querySelector('[data-period="week"]') });
+});
+
+quickFiltersContainer.addEventListener('click', (e) => {
+    if (e.target.matches('button[data-period]')) {
+        handleQuickFilter(e);
+    }
+});
+
+function handleQuickFilter(e) {
+    const period = e.target.dataset.period;
+    const today = new Date();
+    let start = new Date();
+    let end = new Date();
+
+    switch (period) {
+        case 'today': break;
+        case 'week': const day = today.getDay(); start.setDate(today.getDate() - day + (day === 0 ? -6 : 1)); break;
+        case 'month': start = new Date(today.getFullYear(), today.getMonth(), 1); break;
+        case 'semester': start = new Date(today.getFullYear(), today.getMonth() < 6 ? 0 : 6, 1); break;
+    }
+    
+    setDateInputs(start, end);
+    applyFilterBtn.click();
+    
+    quickFiltersContainer.querySelectorAll('button').forEach(btn => btn.classList.remove('active'));
+    e.target.classList.add('active');
+}
+
+applyFilterBtn.addEventListener('click', async () => {
+    const startDate = startDateInput.value;
+    const endDate = endDateInput.value;
+
+    if (!startDate || !endDate) { alert("Por favor, selecione as datas de início e fim."); return; }
+    const processedData = await fetchAndProcessData(startDate, endDate);
+    if (processedData) { renderCharts(processedData); }
+});
+
+// --- AI ANALYSIS ---
+analyzeWithAiBtn.addEventListener('click', async () => {
+    if (!processedDataCache) { alert("Não há dados processados para analisar."); return; }
+    document.getElementById('modal-ai').classList.add('show');
+    const aiContent = document.getElementById('ai-result-content');
+    const aiExportButtons = document.getElementById('ai-export-buttons');
+    let dataSummary = "Resumo dos dados por máquina (ambos os turnos):\n" + Object.entries(processedDataCache.byMachine).map(([m,d]) => `- Máquina: ${m}, Desvio Médio: ${d.avgDeviation.toFixed(2)}s, Nº Registros: ${d.count}`).join('\n');
+    const prompt = `Como analista de produção sênior, analise o seguinte relatório consolidado dos 2º e 3º turnos de ${startDateInput.value} a ${endDateInput.value}. Dados: ${dataSummary}. Forneça um resumo executivo, identifique os principais gargalos (piores máquinas), analise tendências de eficiência e sugira um plano de ação claroforneça uma lista completa de todas a máquinas, detalhe suas obseervações, e faça um comparativo de turnos de produção entre as máquinas. Formate com títulos em negrito e listas.`;
+    await callGeminiApi(prompt, aiContent, aiExportButtons);
+});
+
+async function analisarCausaRaiz(machineName) {
+    document.getElementById('modal-rca').classList.add('show');
+    const rcaContent = document.getElementById('rca-result-content');
+    const rcaExportButtons = document.getElementById('rca-export-buttons');
+    document.getElementById('rca-modal-title').innerText = `✨ Análise de Causa Raiz: ${machineName}`;
+    const machineRecords = allRecordsCache.filter(r => r.nome_maquina === machineName).map(r => `- Data: ${r.data}, Turno: ${r.turno}, Ciclo Padrão: ${r.ciclo_padrao}s, Atual: ${r.ciclo_atual}s, Obs: ${r.observacoes || 'N/A'}`).join('\n');
+    const prompt = `Como especialista em injetoras, faça uma Análise de Causa Raiz para a máquina **${machineName}**, considerando dados dos 2º e 3º turnos de ${startDateInput.value} a ${endDateInput.value}. Registros: ${machineRecords}. Forneça em português: 1. **Diagnóstico Principal**. 2. **Evidências por Turno**. 3. **Ações Corretivas Imediatas**. 4. **Ações Preventivas**. Seja técnico e direto, Formate com títulos em negritos e listas.`;
+    await callGeminiApi(prompt, rcaContent, rcaExportButtons);
+}
+
+async function callGeminiApi(prompt, contentElement, exportButtonsElement) {
+    const apiKey = localStorage.getItem('geminiApiKey');
+    if (!apiKey) {
+        alert('Chave API do Gemini não encontrada. Por favor, salve sua chave nas Configurações.');
+        contentElement.innerHTML = '<p class="text-red-500">Chave API não configurada.</p>';
+        return;
+    }
+    showLoading(true);
+    contentElement.innerHTML = '<p>Analisando dados com a IA... Por favor, aguarde.</p>';
+    exportButtonsElement.classList.add('hidden');
+    try {
+        const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }] };
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+        const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        if (!response.ok) {
+            const errorBody = await response.json();
+            throw new Error(`HTTP error! status: ${response.status} - ${errorBody.error.message}`);
+        }
+        const result = await response.json();
+        if (result.candidates && result.candidates.length > 0) {
+            const text = result.candidates[0].content.parts[0].text;
+            let htmlResult = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/^- (.*$)/gm, '<li class="ml-4 list-disc">$1</li>').replace(/\n/g, '<br>');
+            contentElement.innerHTML = htmlResult;
+            exportButtonsElement.classList.remove('hidden');
+        } else { throw new Error("Resposta da API inválida."); }
+    } catch (error) {
+        console.error('Erro na chamada da API Gemini:', error);
+        contentElement.innerHTML = `<p class="text-red-500">Ocorreu um erro ao buscar a análise da IA. (Erro: ${error.message})</p>`;
+    } finally {
+        showLoading(false);
+    }
+}
+
+// --- EXPORT FUNCTIONS ---
+exportPdfBtn.addEventListener('click', () => {
+    if (!processedDataCache) { alert("Não há dados para exportar."); return; }
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF('p', 'pt', 'a4');
+    const addChartToPdf = (chartInstance, y) => { const imgData = chartInstance.toBase64Image(); doc.addImage(imgData, 'PNG', 40, y, 515, 280); return y + 300; };
+    doc.setFontSize(18); doc.text(`Relatório de Desempenho - 2º e 3º Turnos`, 40, 40);
+    doc.setFontSize(12); doc.text(`Período: ${startDateInput.value} a ${endDateInput.value}`, 40, 60);
+    let currentY = 80;
+    currentY = addChartToPdf(gargalosChartInstance, currentY);
+    doc.addPage(); currentY = 40;
+    currentY = addChartToPdf(frequenciaChartInstance, currentY);
+    currentY = addChartToPdf(tendenciaChartInstance, currentY);
+    doc.addPage(); doc.setFontSize(14); doc.text("Dados Consolidados por Máquina", 40, 40);
+    const head = [['Máquina', 'Turno', 'Data', 'Observação']];
+    const body = allRecordsCache.map(d => [ d.nome_maquina, d.turno, d.data, d.observacoes || 'N/A' ]);
+    doc.autoTable({ head: head, body: body, startY: 50, theme: 'grid' });
+    doc.save(`dashboard-geral-${formatDate(new Date())}.pdf`);
+});
+
+exportTxtBtn.addEventListener('click', () => {
+    if (!processedDataCache) { alert("Não há dados para exportar."); return; }
+    let content = `RELATÓRIO CONSOLIDADO - 2º e 3º TURNOS\nPeríodo: ${startDateInput.value} a ${endDateInput.value}\n\n`;
+    content += "--- DADOS POR MÁQUINA ---\n";
+    for(const machine in processedDataCache.byMachine) { const d = processedDataCache.byMachine[machine]; content += `Máquina: ${machine}\n  - Desvio Médio: ${d.avgDeviation.toFixed(2)}s\n  - Registros: ${d.count}\n\n`; }
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a'); link.href = url; link.download = `dashboard-geral-${formatDate(new Date())}.txt`;
+    link.click(); URL.revokeObjectURL(url);
+});
+
+function exportarAnaliseTXT(type) {
+    const isRCA = type === 'rca';
+    const contentElement = document.getElementById(isRCA ? 'rca-result-content' : 'ai-result-content');
+    let title = isRCA ? `Análise de Causa Raiz: ${document.getElementById('rca-modal-title').innerText.split(': ')[1]}` : 'Relatório de Análise Geral';
+    const contentText = contentElement.innerText;
+    if (!contentText) { alert("Não há análise para exportar."); return; }
+    let fileContent = `${title.toUpperCase()}\nPeríodo: ${startDateInput.value} a ${endDateInput.value}\n\n=========================================\n\n${contentText}`;
+    const blob = new Blob([fileContent], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a"); link.href = url; link.download = `analise-${type}-${formatDate(new Date())}.txt`;
+    link.click(); URL.revokeObjectURL(url);
+}
+
+function exportarAnalisePDF(type) {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+
+    const isRCA = type === 'rca';
+    const contentElement = document.getElementById(isRCA ? 'rca-result-content' : 'ai-result-content');
+    const titleText = isRCA
+        ? `Análise de Causa Raiz: ${document.getElementById('rca-modal-title').innerText.split(': ')[1]}`
+        : "Relatório de Análise Geral";
+
+    if (!contentElement.innerHTML || contentElement.innerText.trim().startsWith('Analisando dados')) {
+        alert("Não há análise da IA para exportar ou a análise está em andamento.");
+        return;
+    }
+
+    // Converte o conteúdo para Markdown (se vier em HTML) e depois para HTML puro
+    let markdownContent = contentElement.innerText || contentElement.textContent || '';
+    let htmlContent = '';
+    if (window.marked && typeof window.marked.parse === 'function') {
+        htmlContent = window.marked.parse(markdownContent);
+    } else {
+        htmlContent = markdownContent.replace(/\n/g, '<br>');
+    }
+
+    // Cria um elemento virtual para parsear o HTML convertido
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = htmlContent;
+
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 18;
+    let cursorY = margin;
+
+    function addHeader(title) {
+        doc.setFontSize(18);
+        doc.setFont(undefined, 'bold');
+        doc.text(title, margin, cursorY, { maxWidth: pageWidth - margin * 2, align: 'left' });
+        cursorY += 12;
+        doc.setFontSize(12);
+        doc.setFont(undefined, 'normal');
+        doc.text(`Período da Análise: ${startDateInput.value} a ${endDateInput.value}`, margin, cursorY, { maxWidth: pageWidth - margin * 2, align: 'left' });
+        cursorY += 8;
+        doc.setLineWidth(0.3);
+        doc.setDrawColor(180);
+        doc.line(margin, cursorY, pageWidth - margin, cursorY);
+        cursorY += 14;
+    }
+
+    addHeader(titleText);
+
+    // Função auxiliar para inserir texto no PDF, justificado, com recuo e pular de página quando precisar
+    function insertText(text, fontStyle = 'normal', fontSize = 11, offsetX = margin, spacing = 6) {
+        doc.setFont(undefined, fontStyle);
+        doc.setFontSize(fontSize);
+        const maxWidth = pageWidth - offsetX - margin;
+        const splitText = doc.splitTextToSize(text, maxWidth);
+        for (const subLine of splitText) {
+            if (cursorY + spacing > pageHeight - margin) {
+                doc.addPage();
+                cursorY = margin;
+                addHeader(titleText);
+                doc.setFont(undefined, fontStyle);
+                doc.setFontSize(fontSize);
+            }
+            doc.text(subLine, offsetX, cursorY, { maxWidth, align: 'justify' });
+            cursorY += spacing;
+        }
+    }
+
+    // Parsing manual dos elementos HTML mais comuns (h2, h3, ul, li, p, strong, ol)
+    let globalOlIndex = 1;
+    function parseNodes(nodes, listLevel = 0) {
+        nodes.forEach(node => {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+                switch (node.nodeName) {
+                    case 'H1':
+                    case 'H2':
+                        case 'H3':
+                        insertText(node.textContent.trim(), 'bold', 15, margin, 10);
+                        cursorY += 6; // Espaço maior após título
+                        break;
+                    case 'H4':
+                        insertText(node.textContent.trim(), 'bold', 12, margin, 8);
+                        cursorY += 6; // Espaço maior após subtítulo
+                        break;
+                    case 'UL':
+                        node.childNodes.forEach(li => {
+                            if (li.nodeName === 'LI') {
+                                insertText('• ' + li.textContent.trim(), 'normal', 10, margin + 8 + listLevel * 6, 6);
+                            }
+                        });
+                        cursorY += 2;
+                        break;
+                   case 'OL':
+                        node.childNodes.forEach(li => {
+                            if (li.nodeName === 'LI') {
+                                insertText(`${globalOlIndex}. ` + li.textContent.trim(), 'bold', 10, margin + 4);
+                                globalOlIndex++;
+                            }
+                        });
+
+                        
+                        cursorY += 2;
+                        break;
+                    case 'P':
+                        // Verifica se o parágrafo tem texto em negrito (strong)
+                        if (node.innerHTML.includes('<strong>')) {
+                            node.childNodes.forEach(cn => {
+                                if (cn.nodeName === 'STRONG') {
+                                    insertText(cn.textContent.trim(), 'bold', 12, margin, 6);
+                                } else if (cn.nodeType === Node.TEXT_NODE) {
+                                    insertText(cn.textContent.trim(), 'normal', 11, margin, 6);
+                                }
+                            });
+                        } else {
+                            insertText(node.textContent.trim(), 'normal', 11, margin, 6);
+                        }
+                        cursorY += 2;
+                        break;
+                    case 'STRONG':
+                        insertText(node.textContent.trim(), 'bold', 12, margin, 6);
+                        break;
+                    case 'BR':
+                        cursorY += 3;
+                        break;
+                    default:
+                        insertText(node.textContent.trim(), 'normal', 12, margin, 6);
+                }
+            } else if (node.nodeType === Node.TEXT_NODE) {
+                if (node.textContent.trim() !== '') {
+                    insertText(node.textContent.trim(), 'normal', 11, margin, 6);
+                }
+            }
+        });
+    }
+
+    parseNodes(Array.from(tempDiv.childNodes));
+
+    doc.save(`analise-${type}-${formatDate(new Date())}.pdf`);
+}
+
+</script>
+</body>
+</html>

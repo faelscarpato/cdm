@@ -1,0 +1,1593 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dashboard Geral Consolidado - CDM-MB</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        /* Variáveis CSS para largura da sidebar */
+        :root { --sidebar-width: 250px; --sidebar-width-collapsed: 80px; }
+
+        /* Estilos globais do corpo e fonte */
+        body { background-color: #f3f4f6; font-family: 'Inter', sans-serif; }
+
+        /* Estilo para o conteúdo principal, ajustando a margem esquerda com base na sidebar */
+        .main-content { transition: margin-left 0.3s ease; margin-left: var(--sidebar-width-collapsed); }
+
+        /* Estilos da sidebar */
+        .sidebar { width: var(--sidebar-width); transition: width 0.3s ease, transform 0.3s ease; }
+        .sidebar.collapsed { width: var(--sidebar-width-collapsed); }
+        /* Oculta o texto de navegação quando a sidebar está colapsada */
+        .sidebar.collapsed .nav-text, .sidebar.collapsed .long-title { display: none; }
+
+        /* Media queries para responsividade em telas menores (mobile) */
+        @media (max-width: 768px) {
+            .main-content { margin-left: 0; } /* Remove a margem em mobile */
+            .sidebar { transform: translateX(-100%); width: var(--sidebar-width); } /* Oculta a sidebar fora da tela */
+            .sidebar.show { transform: translateX(0); } /* Mostra a sidebar quando ativada */
+            /* Garante que o texto apareça no modo mobile quando a sidebar está visível */
+            .sidebar.show .nav-text, .sidebar.show .long-title { display: inline; }
+            .sidebar.collapsed { width: var(--sidebar-width); } /* Em mobile, a sidebar não colapsa para um tamanho menor, apenas aparece/desaparece */
+        }
+
+        /* Estilos para botões de ação */
+        .action-button {
+            padding: 0.5rem 1rem;
+            border-radius: 0.375rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        /* Estilos para campos de formulário (inputs, selects) */
+        .form-input, .form-select {
+            padding: 0.6rem 0.75rem;
+            border: 1px solid #d1d5db;
+            border-radius: 0.375rem;
+            box-sizing: border-box; /* Garante que padding e border sejam incluídos na largura/altura */
+            font-size: 0.875rem;
+            width: 100%;
+            background-color: white;
+        }
+
+        /* Variações de cores para botões */
+        .btn-primary { background-color: #4f46e5; color: white; }
+        .btn-primary:hover { background-color: #4338ca; }
+        .btn-secondary { background-color: #6b7280; color: white; }
+        .btn-secondary:hover { background-color: #4b5563; }
+        .btn-gemini { background: linear-gradient(to right, #4f46e5, #9333ea); color: white; }
+        .btn-gemini:hover { background: linear-gradient(to right, #4338ca, #7e22ce); }
+        .btn-export-pdf { background-color: #ef4444; color: white; }
+        .btn-export-pdf:hover { background-color: #dc2626; }
+        .btn-export-txt { background-color: #06b6d4; color: white; }
+        .btn-export-txt:hover { background-color: #0891b2; }
+        /* Botões desabilitados */
+        .action-button:disabled { background-color: #9ca3af; cursor: not-allowed; opacity: 0.7; }
+        /* Botões de filtro rápido */
+        .filter-button.active { background-color: #4f46e5; color: white; }
+        .filter-button { background-color: #e5e7eb; color: #374151; }
+
+        /* Estilos para cards (contêineres de conteúdo) */
+        .card {
+            background-color: white;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1);
+            padding: 1.5rem;
+        }
+        /* Estilos para modais (pop-ups) */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background-color: rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1050;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s, visibility 0.3s;
+        }
+        .modal-overlay.show {
+            opacity: 1;
+            visibility: visible;
+        }
+        .modal-content {
+            background-color: white;
+            padding: 1.5rem 2rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+            width: 90%;
+            max-width: 800px;
+            transform: scale(0.95);
+            transition: transform 0.3s;
+        }
+        .modal-overlay.show .modal-content {
+            transform: scale(1);
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #e5e7eb;
+            padding-bottom: 0.75rem;
+            margin-bottom: 1rem;
+        }
+        .modal-title { font-size: 1.25rem; font-weight: 600; color: #1f2937; }
+        .modal-close-button {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            line-height: 1;
+            cursor: pointer;
+            color: #9ca3af;
+        }
+        .modal-close-button:hover{color: #4b5563;}
+
+        /* Loading Spinner */
+        #loadingOverlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background-color: rgba(255, 255, 255, 0.7);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+        }
+        #loadingSpinner {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #4f46e5;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* KPI Cards */
+        .kpi-card {
+            background-color: white;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1);
+            padding: 1.5rem;
+            text-align: center;
+        }
+        .kpi-card-title {
+            font-size: 0.875rem;
+            color: #6b7280;
+            margin-bottom: 0.5rem;
+        }
+        .kpi-card-value {
+            font-size: 2.25rem;
+            font-weight: 700;
+            color: #1f2937;
+        }
+    </style>
+</head>
+<body class="bg-gray-200">
+    <!-- Overlay de carregamento -->
+    <div id="loadingOverlay" class="flex items-center justify-center">
+        <div id="loadingSpinner"></div>
+    </div>
+
+    <!-- SIDEBAR -->
+        <!-- SIDEBAR -->
+    <aside id="sidebar" class="sidebar bg-gray-800 text-white h-screen fixed top-0 left-0 z-40 flex flex-col collapsed">
+        <div class="p-4 flex items-center justify-between h-16 border-b border-gray-700">
+            <h1 class="text-2xl font-bold whitespace-nowrap overflow-hidden">
+                <span class="long-title">CDM - MB</span>
+            </h1>
+            <button id="close-sidebar" class="text-gray-400 hover:text-white md:hidden text-3xl leading-none">&times;</button>
+        </div>
+        <nav class="flex-grow p-2 overflow-y-auto">
+            <ul>
+                <li>
+                    <a href="index_geral.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Página Inicial">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m0 0l7 7m-7-7v10a1 1 0 01-1 1H6a1 1 0 01-1-1v-10"></path></svg>
+                        <span class="ml-4 nav-text">Página Inicial</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="absenteismo.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Absenteísmo">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.225-1.26-.623-1.741M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 0c-2.21 0-4 2.24-4 5v2h8v-2c0-2.76-1.79-5-4-5z"></path></svg>
+                        <span class="ml-4 nav-text">Absenteísmo</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="dashboard.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Dashboard">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                        <span class="ml-4 nav-text">Dashboard</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="status_t1.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Status Máquinas">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                        <span class="ml-4 nav-text">Status 1ºT</span>
+                    </a>
+                </li>
+                 <li>
+                    <a href="status.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Status Máquinas">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                        <span class="ml-4 nav-text">Status 2ºT</span>
+                    </a>
+                </li>
+                 <li>
+                    <a href="status_t3.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Status Máquinas">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                        <span class="ml-4 nav-text">Status 3ºT</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="cadastro-detalhado.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Cadastro Máquinas/Moldes">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8H4a2 2 0 01-2-2v-4A2 2 0 014 12h2m-2 4h4m5-4h5a2 2 0 012 2v4a2 2 0 01-2 2h-5m-2-4H9m2 2h2"></path></svg>
+                        <span class="ml-4 nav-text">Cadastro Detalhado</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="analise_causa_raiz.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Análise de Causa Raiz">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                        <span class="ml-4 nav-text">Análise de Causa Raiz</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="ordens_servico.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Ordens de Serviço">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
+                        <span class="ml-4 nav-text">Ordens de Serviço</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="gestao_qualidade.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Gestão de Qualidade">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        <span class="ml-4 nav-text">Gestão de Qualidade</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="dashboard_qualidade.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Dashboard de Qualidade">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z"></path></svg>
+                        <span class="ml-4 nav-text">Dashboard de Qualidade</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="gestao_manutencao.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Gestão de Manutenção">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.096 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                        <span class="ml-4 nav-text">Gestão de Manutenção</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="gestao_estoque.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Gestão de Estoque">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"></path></svg>
+                        <span class="ml-4 nav-text">Gestão de Estoque</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="dashboard_geral_consolidado.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Dashboard Geral Consolidado">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v8m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v12a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                        <span class="ml-4 nav-text">Dashboard Geral</span>
+                    </a>
+                </li>
+            </ul>
+        </nav>
+        <div class="p-2 border-t border-gray-700">
+            <a href="#" id="settings-button" class="flex items-center p-3 rounded-lg hover:bg-gray-700" title="Configurações">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.096 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                <span class="ml-4 nav-text">Configurações</span>
+            </a>
+        </div>
+    </aside>
+    <div id="sidebar-overlay" class="fixed inset-0 bg-black bg-opacity-50 z-30 hidden md:hidden"></div>
+
+    <!-- MAIN CONTENT WRAPPER -->
+    <div class="main-content">
+        <!-- HEADER -->
+        <header class="bg-white shadow-md sticky top-0 z-20 h-16 flex items-center px-6">
+            <button id="menu-button" class="p-2 text-gray-500 rounded-md -ml-2 mr-2">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+            </button>
+            <h1 class="text-xl font-semibold text-gray-800">
+                <span class="hidden sm:inline">Ciclos Diários de Máquinas - MB</span>
+                <span class="sm:hidden">CDM - MB</span>
+            </h1>
+        </header>
+
+        <!-- DASHBOARD CONTENT -->
+        <main class="p-4 sm:p-6 lg:p-8">
+            <h1 class="text-3xl font-bold text-gray-900 mb-6 text-center">DASHBOARD GERAL CONSOLIDADO</h1>
+
+            <!-- FILTERS -->
+            <div class="card mb-6">
+                <h2 class="text-lg font-semibold text-gray-800 mb-4">Filtrar Período e Turno</h2>
+                <div class="flex flex-wrap items-center gap-4">
+                    <div id="quick-filters" class="flex flex-wrap gap-2">
+                        <button class="action-button filter-button" data-period="today">Hoje</button>
+                        <button class="action-button filter-button" data-period="week">Esta Semana</button>
+                        <button class="action-button filter-button" data-period="month">Este Mês</button>
+                        <button class="action-button filter-button" data-period="semester">Este Semestre</button>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <input type="date" id="startDate" class="form-input p-2 border rounded-md">
+                        <span class="text-gray-600">até</span>
+                        <input type="date" id="endDate" class="form-input p-2 border rounded-md">
+                    </div>
+                    <div>
+                        <label for="shiftFilter" class="sr-only">Filtrar por Turno</label>
+                        <select id="shiftFilter" class="form-select p-2 border rounded-md">
+                            <option value="all">Todos os Turnos</option>
+                            <option value="t1">1º Turno</option>
+                            <option value="t2">2º Turno</option>
+                            <option value="t3">3º Turno</option>
+                        </select>
+                    </div>
+                    <button id="apply-filter" class="action-button btn-primary">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6V4z"></path></svg>
+                        Aplicar Filtro
+                    </button>
+                    <button id="analyze-with-ai" class="action-button btn-gemini" disabled>
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16v4m-2-2h4m5-16v4m-2-2h4M12 21v-4m-2-2h4m5-16v4m-2-2h4m5-16v4m-2-2h4M12 21v-4m-2-2h4m5-16v4m-2-2h4"></path></svg>
+                        Analisar Dashboard com IA
+                    </button>
+                </div>
+            </div>
+
+            <!-- KPI Cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+                <div class="kpi-card">
+                    <h3 class="kpi-card-title">Produção Total (OK)</h3>
+                    <p id="kpiTotalOk" class="kpi-card-value text-green-600">0</p>
+                </div>
+                <div class="kpi-card">
+                    <h3 class="kpi-card-title">Total Refugo</h3>
+                    <p id="kpiTotalRefugo" class="kpi-card-value text-red-600">0</p>
+                </div>
+                <div class="kpi-card">
+                    <h3 class="kpi-card-title">Taxa de Refugo (%)</h3>
+                    <p id="kpiRefugoRate" class="kpi-card-value text-yellow-600">0.00%</p>
+                </div>
+                <div class="kpi-card">
+                    <h3 class="kpi-card-title">Desvio Médio Ciclo (s)</h3>
+                    <p id="kpiAvgCycleDeviation" class="kpi-card-value text-blue-600">0.00</p>
+                </div>
+                <div class="kpi-card">
+                    <h3 class="kpi-card-title">Total Horas Paradas</h3>
+                    <p id="kpiTotalDowntime" class="kpi-card-value text-orange-600">0h 0m</p>
+                </div>
+                <div class="kpi-card">
+                    <h3 class="kpi-card-title">Custo Total Manutenção (R$)</h3>
+                    <p id="kpiTotalMaintenanceCost" class="kpi-card-value text-purple-600">R$ 0.00</p>
+                </div>
+                <div class="kpi-card">
+                    <h3 class="kpi-card-title">Itens em Estoque</h3>
+                    <p id="kpiTotalStockItems" class="kpi-card-value text-indigo-600">0</p>
+                </div>
+                <div class="kpi-card">
+                    <h3 class="kpi-card-title">Matéria-Prima em Estoque</h3>
+                    <p id="kpiRawMaterialStock" class="kpi-card-value text-gray-600">0 Kg</p>
+                </div>
+            </div>
+
+            <!-- DASHBOARD GRAPHS -->
+            <div id="dashboard-grid" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div class="card">
+                    <h3 class="text-xl font-semibold text-gray-800 mb-4">Produção OK vs. Refugo por Turno</h3>
+                    <canvas id="productionByShiftChart"></canvas>
+                </div>
+                <div class="card">
+                    <h3 class="text-xl font-semibold text-gray-800 mb-4">Taxa de Refugo por Máquina</h3>
+                    <canvas id="scrapRateByMachineChart"></canvas>
+                </div>
+                <div class="card">
+                    <h3 class="text-xl font-semibold text-gray-800 mb-4">Horas Paradas por Tipo de Manutenção</h3>
+                    <canvas id="downtimeByMaintenanceTypeChart"></canvas>
+                </div>
+                <div class="card">
+                    <h3 class="text-xl font-semibold text-gray-800 mb-4">Custo de Manutenção por Ativo</h3>
+                    <canvas id="maintenanceCostByAssetChart"></canvas>
+                </div>
+                <div class="card lg:col-span-2">
+                    <h3 class="text-xl font-semibold text-gray-800 mb-4">Tendência Diária de Desvio de Ciclo</h3>
+                    <canvas id="cycleDeviationTrendChart"></canvas>
+                </div>
+                <div class="card lg:col-span-2">
+                    <h3 class="text-xl font-semibold text-gray-800 mb-4">Distribuição de Estoque por Tipo de Item</h3>
+                    <canvas id="stockDistributionChart"></canvas>
+                </div>
+            </div>
+
+            <!-- EXPORT SECTION -->
+            <div class="card mt-6">
+                 <h2 class="text-lg font-semibold text-gray-800 mb-4">Exportar Relatório do Dashboard</h2>
+                 <div class="flex flex-wrap gap-4">
+                    <button id="export-pdf" class="action-button btn-export-pdf" disabled>
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                        Exportar para PDF
+                    </button>
+                    <button id="export-txt" class="action-button btn-export-txt" disabled>
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                        Exportar para TXT
+                    </button>
+                 </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- GENERAL AI ANALYSIS MODAL -->
+    <div id="modal-ai" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">
+                    <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16v4m-2-2h4m5-16v4m-2-2h4M12 21v-4m-2-2h4m5-16v4m-2-2h4m5-16v4m-2-2h4M12 21v-4m-2-2h4m5-16v4m-2-2h4"></path></svg>
+                    Análise Geral do Dashboard com IA
+                </h2>
+                <button class="modal-close-button" data-close-modal-id="modal-ai">&times;</button>
+            </div>
+            <div id="ai-result-content" class="prose max-w-none max-h-[60vh] overflow-y-auto text-gray-700"></div>
+            <div id="ai-export-buttons" class="mt-4 pt-4 border-t flex justify-end gap-3 hidden">
+                <button onclick="exportarAnaliseTXT('general')" class="action-button btn-export-txt">Exportar TXT</button>
+                <button onclick="exportarAnalisePDF('general')" class="action-button btn-export-pdf">Exportar PDF</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE CONFIGURAÇÕES (para chave API Gemini) -->
+    <div id="modal-settings" class="modal-overlay">
+        <div class="modal-content max-w-lg">
+            <div class="modal-header">
+                <h2 class="modal-title">Configurações</h2>
+                <button class="modal-close-button" data-close-modal-id="modal-settings">&times;</button>
+            </div>
+            <div>
+                <label for="gemini-api-key" class="block text-sm font-medium text-gray-700 mb-1">Sua Chave API Google Gemini</label>
+                <input type="password" id="gemini-api-key" class="w-full p-2 border rounded-md mb-2" placeholder="Cole sua chave aqui">
+                <button id="save-api-key" class="action-button btn-primary w-full mb-4">Salvar Chave</button>
+                <div class="text-center">
+                    <button id="show-tutorial" class="text-indigo-600 hover:underline text-sm">Como Obter Chave API?</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE TUTORIAL (como obter chave API) -->
+    <div id="modal-tutorial" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Como Obter sua Chave API do Google Gemini</h2>
+                <button class="modal-close-button" data-close-modal-id="modal-tutorial">&times;</button>
+            </div>
+            <div class="prose max-w-none text-gray-700">
+                <p>Para utilizar todas as funcionalidades de análise por IA, você precisará de uma Chave API do Google Gemini. O Gemini 1.5 Flash, que é necessária, oferece um nível gratuito generoso.</p>
+                <h4>Passo 1: Acesse o Google AI Studio</h4>
+                <p>Se você ainda não tem uma conta Google, precisará criar uma. Depois, acesse o Google AI Studio:</p>
+                <a href="https://aistudio.google.com/app/apikey" target="_blank" class="action-button btn-primary">Ir para o Google AI Studio &rarr;</a>
+                <h4 class="mt-4">Passo 2: Gere sua Chave API</h4>
+                <ul>
+                    <li>Procure pela opção "Get API key" ou "Criar chave API".</li>
+                    <li>Siga as instruções para nomear seu projeto, se necessário.</li>
+                    <li>Após a criação, sua chave API será exibida.</li>
+                </ul>
+                <h4>Passo 3: Copie e Cole sua Chave API</h4>
+                <ul>
+                    <li>Clique no botão para copiar sua chave API.</li>
+                    <li>Volte para esta página (dentro do modal de Configurações).</li>
+                    <li>Cole a chave no campo "Sua Chave API Google Gemini".</li>
+                    <li>Clique em "Salvar".</li>
+                </ul>
+                <p class="font-semibold mt-4">Importante: Guarde sua chave API em um local seguro e não a compartilhe publicamente.</p>
+            </div>
+            <div class="mt-6 text-center">
+                <button class="action-button btn-secondary" data-close-modal-id="modal-tutorial">Entendi - Fechar Tutorial</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- SUPABASE CLIENT CONFIGURATION ---
+        const SUPABASE_URL = 'https://ranhhacbgyfpzrjdynnd.supabase.co'; // Substitua pelo seu URL Supabase
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJhbmhoYWNiZ3lmcHpyamR5bm5kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDM5MDU4OTEsImV4cCI6MjA1OTQ4MTg5MX0.Ey-X4Tz8krKHSICnYdHdBaI3q5WcRgUVwA8jOhfMr7Y'; // Substitua pela sua chave Anon pública
+        const { createClient } = supabase;
+        const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // --- GLOBAL CHART INSTANCES ---
+        let productionByShiftChartInstance, scrapRateByMachineChartInstance,
+            downtimeByMaintenanceTypeChartInstance, maintenanceCostByAssetChartInstance,
+            cycleDeviationTrendChartInstance, stockDistributionChartInstance;
+
+        // --- GLOBAL DATA CACHES ---
+        let allConsolidatedData = null; // Stores all fetched and processed data for the selected date range
+        let filteredDataForCharts = null; // Stores data filtered by shift for chart rendering
+
+        // --- DOM ELEMENTS ---
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        const startDateInput = document.getElementById('startDate');
+        const endDateInput = document.getElementById('endDate');
+        const shiftFilterSelect = document.getElementById('shiftFilter');
+        const applyFilterBtn = document.getElementById('apply-filter');
+        const quickFiltersContainer = document.getElementById('quick-filters');
+        const analyzeWithAiBtn = document.getElementById('analyze-with-ai');
+        const exportPdfBtn = document.getElementById('export-pdf');
+        const exportTxtBtn = document.getElementById('export-txt');
+
+        // KPI elements
+        const kpiTotalOk = document.getElementById('kpiTotalOk');
+        const kpiTotalRefugo = document.getElementById('kpiTotalRefugo');
+        const kpiRefugoRate = document.getElementById('kpiRefugoRate');
+        const kpiAvgCycleDeviation = document.getElementById('kpiAvgCycleDeviation');
+        const kpiTotalDowntime = document.getElementById('kpiTotalDowntime');
+        const kpiTotalMaintenanceCost = document.getElementById('kpiTotalMaintenanceCost');
+        const kpiTotalStockItems = document.getElementById('kpiTotalStockItems');
+        const kpiRawMaterialStock = document.getElementById('kpiRawMaterialStock');
+
+        // AI Modal elements
+        const aiModal = document.getElementById('modal-ai');
+        const aiResultContent = document.getElementById('ai-result-content');
+        const aiExportButtons = document.getElementById('ai-export-buttons');
+
+        // --- UTILITY FUNCTIONS ---
+        // Exibe ou oculta o overlay de carregamento
+        const showLoading = (isLoading) => { loadingOverlay.style.display = isLoading ? 'flex' : 'none'; };
+
+        // Formata uma data para o padrão YYYY-MM-DD
+        const formatDate = (date) => date.toISOString().split('T')[0];
+
+        // Define os valores dos inputs de data
+        const setDateInputs = (start, end) => {
+            startDateInput.value = formatDate(start);
+            endDateInput.value = formatDate(end);
+        };
+
+        // Calcula a duração em minutos entre duas datas/horas
+        function calculateDurationInMinutes(start, end) {
+            if (!start || !end) return 0;
+            const diffMs = new Date(end).getTime() - new Date(start).getTime();
+            return Math.round(diffMs / 60000); // Milissegundos para minutos
+        }
+
+        // Formata minutos para "Xh Ym"
+        function formatMinutesToHoursMinutes(totalMinutes) {
+            if (isNaN(totalMinutes) || totalMinutes < 0) return '0h 0m';
+            const hours = Math.floor(totalMinutes / 60);
+            const minutes = totalMinutes % 60;
+            return `${hours}h ${minutes}m`;
+        }
+
+        // --- SIDEBAR & NAVIGATION ---
+        const sidebar = document.getElementById('sidebar');
+        const menuButton = document.getElementById('menu-button');
+        const closeSidebarButton = document.getElementById('close-sidebar');
+        const sidebarOverlay = document.getElementById('sidebar-overlay');
+
+        // Adiciona listeners para controlar a abertura e fechamento da sidebar
+        menuButton.addEventListener('click', () => {
+            if (window.innerWidth < 768) {
+                sidebar.classList.remove('collapsed');
+                sidebar.classList.add('show');
+                sidebarOverlay.classList.remove('hidden');
+            } else {
+                sidebar.classList.toggle('collapsed');
+                document.querySelector('.main-content').style.marginLeft = sidebar.classList.contains('collapsed') ? 'var(--sidebar-width-collapsed)' : 'var(--sidebar-width)';
+            }
+        });
+        closeSidebarButton.addEventListener('click', () => {
+            sidebar.classList.remove('show');
+            sidebarOverlay.classList.add('hidden');
+        });
+        sidebarOverlay.addEventListener('click', () => {
+            sidebar.classList.remove('show');
+            sidebarOverlay.classList.add('hidden');
+        });
+
+        // --- MODAL HANDLING (Configurações e Tutorial da API Key) ---
+        // Função genérica para configurar a abertura de modais
+        function setupModal(modalId, openTriggerId) {
+            const modal = document.getElementById(modalId);
+            const openBtn = document.getElementById(openTriggerId);
+            if (modal && openBtn) {
+                openBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    modal.classList.add('show');
+                });
+            }
+        }
+
+        // Adiciona listener para fechar modais clicando no botão de fechar ou no overlay
+        document.body.addEventListener('click', (e) => {
+            if (e.target.dataset.closeModalId) {
+                document.getElementById(e.target.dataset.closeModalId).classList.remove('show');
+            }
+        });
+
+        // Configura os modais de configurações e tutorial
+        setupModal('modal-settings', 'settings-button');
+        setupModal('modal-tutorial', 'show-tutorial');
+
+        // Lógica para salvar a chave da API Gemini no localStorage
+        const apiKeyInput = document.getElementById('gemini-api-key');
+        const saveApiKeyBtn = document.getElementById('save-api-key');
+        if (apiKeyInput) apiKeyInput.value = localStorage.getItem('geminiApiKey') || '';
+        if (saveApiKeyBtn) saveApiKeyBtn.addEventListener('click', () => {
+            const key = apiKeyInput.value.trim();
+            if (key) {
+                localStorage.setItem('geminiApiKey', key);
+                alert('Chave API salva com sucesso!'); // Usar alerta nativo por simplicidade aqui
+                document.getElementById('modal-settings').classList.remove('show');
+            } else {
+                alert('Por favor, insira uma chave API válida.'); // Usar alerta nativo
+            }
+        });
+
+        // --- CHART RENDERING ---
+        function destroyAllCharts() {
+            if (productionByShiftChartInstance) productionByShiftChartInstance.destroy();
+            if (scrapRateByMachineChartInstance) scrapRateByMachineChartInstance.destroy();
+            if (downtimeByMaintenanceTypeChartInstance) downtimeByMaintenanceTypeChartInstance.destroy();
+            if (maintenanceCostByAssetChartInstance) maintenanceCostByAssetChartInstance.destroy();
+            if (cycleDeviationTrendChartInstance) cycleDeviationTrendChartInstance.destroy();
+            if (stockDistributionChartInstance) stockDistributionChartInstance.destroy();
+        }
+
+        function renderDashboard(data) {
+            if (!data) {
+                // Clear KPIs and disable buttons if no data
+                kpiTotalOk.textContent = '0';
+                kpiTotalRefugo.textContent = '0';
+                kpiRefugoRate.textContent = '0.00%';
+                kpiAvgCycleDeviation.textContent = '0.00';
+                kpiTotalDowntime.textContent = '0h 0m';
+                kpiTotalMaintenanceCost.textContent = 'R$ 0.00';
+                kpiTotalStockItems.textContent = '0';
+                kpiRawMaterialStock.textContent = '0 Kg';
+
+                destroyAllCharts();
+                analyzeWithAiBtn.disabled = true;
+                exportPdfBtn.disabled = true;
+                exportTxtBtn.disabled = true;
+                return;
+            }
+
+            // Update KPIs
+            kpiTotalOk.textContent = data.kpis.totalOk.toLocaleString('pt-BR');
+            kpiTotalRefugo.textContent = data.kpis.totalRefugo.toLocaleString('pt-BR');
+            kpiRefugoRate.textContent = `${data.kpis.refugoRate.toFixed(2)}%`;
+            kpiAvgCycleDeviation.textContent = `${data.kpis.avgCycleDeviation.toFixed(2)}`;
+            kpiTotalDowntime.textContent = formatMinutesToHoursMinutes(data.kpis.totalDowntimeMinutes);
+            kpiTotalMaintenanceCost.textContent = `R$ ${data.kpis.totalMaintenanceCost.toFixed(2).replace('.', ',')}`;
+            kpiTotalStockItems.textContent = data.kpis.totalStockItems.toLocaleString('pt-BR');
+            kpiRawMaterialStock.textContent = `${data.kpis.totalRawMaterialStock.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kg`;
+
+            // Render Charts
+            destroyAllCharts(); // Destroy previous chart instances
+
+            renderProductionByShiftChart(data.charts.productionByShift);
+            renderScrapRateByMachineChart(data.charts.scrapRateByMachine);
+            renderDowntimeByMaintenanceTypeChart(data.charts.downtimeByMaintenanceType);
+            renderMaintenanceCostByAssetChart(data.charts.maintenanceCostByAsset);
+            renderCycleDeviationTrendChart(data.charts.cycleDeviationTrend);
+            renderStockDistributionChart(data.charts.stockDistribution);
+
+            // Enable export and AI buttons
+            analyzeWithAiBtn.disabled = false;
+            exportPdfBtn.disabled = false;
+            exportTxtBtn.disabled = false;
+        }
+
+        function renderProductionByShiftChart(data) {
+            const ctx = document.getElementById('productionByShiftChart').getContext('2d');
+            productionByShiftChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['1º Turno', '2º Turno', '3º Turno'],
+                    datasets: [
+                        {
+                            label: 'Produção OK',
+                            data: [data.t1.ok, data.t2.ok, data.t3.ok],
+                            backgroundColor: 'rgba(75, 192, 192, 0.6)',
+                            borderColor: 'rgba(75, 192, 192, 1)',
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'Refugo',
+                            data: [data.t1.refugo, data.t2.refugo, data.t3.refugo],
+                            backgroundColor: 'rgba(255, 99, 132, 0.6)',
+                            borderColor: 'rgba(255, 99, 132, 1)',
+                            borderWidth: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: { stacked: true },
+                        y: { beginAtZero: true, stacked: true, title: { display: true, text: 'Quantidade de Peças' } }
+                    },
+                    plugins: { title: { display: true, text: 'Produção OK vs. Refugo por Turno' } }
+                }
+            });
+        }
+
+        function renderScrapRateByMachineChart(data) {
+            const ctx = document.getElementById('scrapRateByMachineChart').getContext('2d');
+            const labels = Object.keys(data);
+            const scrapRates = labels.map(label => data[label].rate);
+            const backgroundColors = scrapRates.map(rate => rate > 5 ? 'rgba(239, 68, 68, 0.6)' : 'rgba(34, 197, 94, 0.6)');
+
+            scrapRateByMachineChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Taxa de Refugo (%)',
+                        data: scrapRates,
+                        backgroundColor: backgroundColors,
+                        borderColor: backgroundColors.map(color => color.replace('0.6', '1')),
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { display: false }, title: { display: true, text: 'Taxa de Refugo por Máquina' } },
+                    scales: { y: { beginAtZero: true, title: { display: true, text: 'Taxa de Refugo (%)' }, max: 100 } }
+                }
+            });
+        }
+
+        function renderDowntimeByMaintenanceTypeChart(data) {
+            const ctx = document.getElementById('downtimeByMaintenanceTypeChart').getContext('2d');
+            const labels = Object.keys(data);
+            const totalMinutes = labels.map(label => data[label]);
+
+            downtimeByMaintenanceTypeChartInstance = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Minutos de Parada',
+                        data: totalMinutes,
+                        backgroundColor: [
+                            'rgba(255, 159, 64, 0.7)', 'rgba(54, 162, 235, 0.7)', 'rgba(153, 102, 255, 0.7)', 'rgba(255, 205, 86, 0.7)'
+                        ],
+                        hoverOffset: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { position: 'top' }, title: { display: true, text: 'Horas Paradas por Tipo de Manutenção' } }
+                }
+            });
+        }
+
+        function renderMaintenanceCostByAssetChart(data) {
+            const ctx = document.getElementById('maintenanceCostByAssetChart').getContext('2d');
+            const labels = Object.keys(data);
+            const costs = labels.map(label => data[label]);
+
+            maintenanceCostByAssetChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Custo (R$)',
+                        data: costs,
+                        backgroundColor: 'rgba(255, 99, 132, 0.6)',
+                        borderColor: 'rgba(255, 99, 132, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { display: false }, title: { display: true, text: 'Custo de Manutenção por Ativo' } },
+                    scales: { y: { beginAtZero: true, title: { display: true, text: 'Custo (R$)' } } }
+                }
+            });
+        }
+
+        function renderCycleDeviationTrendChart(data) {
+            const ctx = document.getElementById('cycleDeviationTrendChart').getContext('2d');
+            cycleDeviationTrendChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    datasets: [{
+                        label: 'Desvio Médio Diário (s)',
+                        data: data,
+                        fill: false,
+                        borderColor: 'rgb(75, 192, 192)',
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: { type: 'time', time: { unit: 'day', tooltipFormat: 'dd/MM/yyyy' }, title: { display: true, text: 'Data' } },
+                        y: { title: { display: true, text: 'Desvio Médio (s)' } }
+                    },
+                    plugins: { title: { display: true, text: 'Tendência Diária de Desvio de Ciclo' } }
+                }
+            });
+        }
+
+        function renderStockDistributionChart(data) {
+            const ctx = document.getElementById('stockDistributionChart').getContext('2d');
+            const labels = Object.keys(data);
+            const quantities = labels.map(label => data[label]);
+
+            stockDistributionChartInstance = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Quantidade em Estoque',
+                        data: quantities,
+                        backgroundColor: [
+                            'rgba(100, 100, 255, 0.7)', 'rgba(100, 255, 100, 0.7)', 'rgba(255, 100, 100, 0.7)'
+                        ],
+                        hoverOffset: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { position: 'top' }, title: { display: true, text: 'Distribuição de Estoque por Tipo de Item' } }
+                }
+            });
+        }
+
+        // --- DATA FETCHING & PROCESSING ---
+        async function fetchAndProcessAllData(startDate, endDate) {
+            showLoading(true);
+            try {
+                // Fetch Production Status Data (from all shifts)
+                const [statusT1Res, statusT2Res, statusT3Res] = await Promise.all([
+                    supabaseClient.from('status_maquinas_t1').select('*').gte('data', startDate).lte('data', endDate),
+                    supabaseClient.from('status_maquinas').select('*').gte('data', startDate).lte('data', endDate), // Assuming status_maquinas is T2
+                    supabaseClient.from('status_maquinas_t3').select('*').gte('data', startDate).lte('data', endDate),
+                ]);
+
+                if (statusT1Res.error) console.error("Error fetching T1 status:", statusT1Res.error);
+                if (statusT2Res.error) console.error("Error fetching T2 status:", statusT2Res.error);
+                if (statusT3Res.error) console.error("Error fetching T3 status:", statusT3Res.error);
+
+                const statusData = [
+                    ...(statusT1Res.data || []).map(d => ({ ...d, shift: 't1' })),
+                    ...(statusT2Res.data || []).map(d => ({ ...d, shift: 't2' })),
+                    ...(statusT3Res.data || []).map(d => ({ ...d, shift: 't3' })),
+                ];
+
+                // Fetch Quality Data
+                const { data: qualityData, error: qualityError } = await supabaseClient.from('producao_qualidade').select(`
+                    quantidade_ok,
+                    quantidade_refugo,
+                    maquina,
+                    data_registro,
+                    ordens_servico (codigo_os),
+                    funcionarios (nome)
+                `).gte('data_registro', `${startDate}T00:00:00`).lte('data_registro', `${endDate}T23:59:59`);
+                if (qualityError) console.error("Error fetching quality data:", qualityError);
+
+                // Fetch Maintenance Data
+                const { data: maintenanceData, error: maintenanceError } = await supabaseClient.from('registros_manutencao').select('*')
+                    .gte('data_inicio', `${startDate}T00:00:00`).lte('data_inicio', `${endDate}T23:59:59`);
+                if (maintenanceError) console.error("Error fetching maintenance data:", maintenanceError);
+
+                // Fetch Stock Data
+                const { data: stockData, error: stockError } = await supabaseClient.from('movimentacoes_estoque').select('*')
+                    .gte('data_movimento', `${startDate}T00:00:00`).lte('data_movimento', `${endDate}T23:59:59`);
+                if (stockError) console.error("Error fetching stock data:", stockError);
+
+                // Process all data
+                const processed = processRawData(statusData, qualityData, maintenanceData, stockData);
+                allConsolidatedData = processed; // Cache the full processed data
+                filterAndRenderCharts(); // Initial render with 'all' shifts
+            } catch (err) {
+                console.error("Erro ao buscar dados consolidados:", err);
+                alert("Falha ao carregar dados do dashboard. Verifique o console.");
+                allConsolidatedData = null;
+                renderDashboard(null); // Clear dashboard on error
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Processes raw data into a structured format for KPIs and charts
+        function processRawData(statusData, qualityData, maintenanceData, stockData) {
+            // Initialize aggregated data structures
+            const aggregated = {
+                kpis: {
+                    totalOk: 0,
+                    totalRefugo: 0,
+                    refugoRate: 0,
+                    avgCycleDeviation: 0,
+                    totalDowntimeMinutes: 0,
+                    totalMaintenanceCost: 0,
+                    totalStockItems: 0, // Count of distinct items with >0 quantity
+                    totalRawMaterialStock: 0, // Sum of raw material quantity
+                    totalFinishedGoodsStock: 0, // Sum of finished goods quantity
+                },
+                charts: {
+                    productionByShift: { t1: { ok: 0, refugo: 0 }, t2: { ok: 0, refugo: 0 }, t3: { ok: 0, refugo: 0 } },
+                    scrapRateByMachine: {},
+                    downtimeByMaintenanceType: {},
+                    maintenanceCostByAsset: {},
+                    cycleDeviationTrend: {}, // { date: { totalDeviation: 0, count: 0 } }
+                    stockDistribution: { 'Matéria-Prima': 0, 'Peça Acabada': 0, 'Outros': 0 }
+                },
+                raw: {
+                    status: statusData,
+                    quality: qualityData,
+                    maintenance: maintenanceData,
+                    stock: stockData
+                }
+            };
+
+            // --- Process Status Data (for Cycle Deviation) ---
+            const cycleDeviationByDay = {};
+            const cycleDeviationByMachine = {};
+
+            statusData.forEach(item => {
+                const deviation = parseFloat(item.ciclo_atual) - (parseFloat(item.ciclo_padrao) * parseInt(item.n_cavidades || 1));
+                const date = item.data; // YYYY-MM-DD
+
+                // For overall average cycle deviation and trend
+                if (!cycleDeviationByDay[date]) { cycleDeviationByDay[date] = { totalDeviation: 0, count: 0 }; }
+                cycleDeviationByDay[date].totalDeviation += deviation;
+                cycleDeviationByDay[date].count++;
+
+                // For average cycle deviation by machine (used in AI analysis prompt)
+                if (!cycleDeviationByMachine[item.nome_maquina]) { cycleDeviationByMachine[item.nome_maquina] = { totalDeviation: 0, count: 0 }; }
+                cycleDeviationByMachine[item.nome_maquina].totalDeviation += deviation;
+                cycleDeviationByMachine[item.nome_maquina].count++;
+            });
+
+            // Calculate average cycle deviation for trend chart
+            aggregated.charts.cycleDeviationTrend = Object.keys(cycleDeviationByDay)
+                .sort((a,b) => new Date(a) - new Date(b))
+                .map(date => ({
+                    x: date,
+                    y: cycleDeviationByDay[date].count > 0 ? cycleDeviationByDay[date].totalDeviation / cycleDeviationByDay[date].count : 0
+                }));
+            
+            // Calculate overall average cycle deviation KPI
+            const totalCycleDeviationSum = Object.values(cycleDeviationByDay).reduce((sum, day) => sum + day.totalDeviation, 0);
+            const totalCycleDeviationCount = Object.values(cycleDeviationByDay).reduce((sum, day) => sum + day.count, 0);
+            aggregated.kpis.avgCycleDeviation = totalCycleDeviationCount > 0 ? totalCycleDeviationSum / totalCycleDeviationCount : 0;
+
+
+            // --- Process Quality Data (for Production OK, Refugo, Scrap Rate) ---
+            const productionByMachine = {}; // { machine: { ok: 0, refugo: 0 } }
+
+            qualityData.forEach(item => {
+                const totalProduced = item.quantidade_ok + item.quantidade_refugo;
+                
+                aggregated.kpis.totalOk += item.quantidade_ok;
+                aggregated.kpis.totalRefugo += item.quantidade_refugo;
+
+                // Aggregate for production by shift chart (needs to be mapped from quality data)
+                // This assumes quality data is not directly linked to shifts.
+                // For a more accurate "production by shift", we'd need shift info in producao_qualidade.
+                // For now, we'll approximate based on time of day or assume the main status tables are the source.
+                // Given the request, I'll map quality data to shifts based on time of day.
+                const recordHour = new Date(item.data_registro).getHours();
+                let shift = 't2'; // Default to T2 if not clearly defined by time
+                if (recordHour >= 6 && recordHour < 14) shift = 't1'; // 6 AM to 1:59 PM
+                else if (recordHour >= 14 && recordHour < 22) shift = 't2'; // 2 PM to 9:59 PM
+                else shift = 't3'; // 10 PM to 5:59 AM
+
+                aggregated.charts.productionByShift[shift].ok += item.quantidade_ok;
+                aggregated.charts.productionByShift[shift].refugo += item.quantidade_refugo;
+
+                // Aggregate for scrap rate by machine chart
+                if (!productionByMachine[item.maquina]) { productionByMachine[item.maquina] = { ok: 0, refugo: 0 }; }
+                productionByMachine[item.maquina].ok += item.quantidade_ok;
+                productionByMachine[item.maquina].refugo += item.quantidade_refugo;
+            });
+
+            // Calculate overall refugo rate KPI
+            const totalOverallProduction = aggregated.kpis.totalOk + aggregated.kpis.totalRefugo;
+            aggregated.kpis.refugoRate = totalOverallProduction > 0 ? (aggregated.kpis.totalRefugo / totalOverallProduction) * 100 : 0;
+
+            // Calculate scrap rate by machine for chart
+            for (const machine in productionByMachine) {
+                const total = productionByMachine[machine].ok + productionByMachine[machine].refugo;
+                aggregated.charts.scrapRateByMachine[machine] = {
+                    rate: total > 0 ? (productionByMachine[machine].refugo / total) * 100 : 0
+                };
+            }
+
+
+            // --- Process Maintenance Data ---
+            const maintenanceCostByAsset = {}; // { assetName: cost }
+
+            maintenanceData.forEach(item => {
+                const duration = calculateDurationInMinutes(item.data_inicio, item.data_fim);
+                aggregated.kpis.totalDowntimeMinutes += duration;
+                aggregated.kpis.totalMaintenanceCost += parseFloat(item.custo || 0);
+
+                // For downtime by maintenance type chart
+                if (!aggregated.charts.downtimeByMaintenanceType[item.tipo_manutencao]) { aggregated.charts.downtimeByMaintenanceType[item.tipo_manutencao] = 0; }
+                aggregated.charts.downtimeByMaintenanceType[item.tipo_manutencao] += duration;
+
+                // For maintenance cost by asset chart
+                const assetKey = `${item.nome_ativo} (${item.tipo_ativo})`;
+                if (!maintenanceCostByAsset[assetKey]) { maintenanceCostByAsset[assetKey] = 0; }
+                maintenanceCostByAsset[assetKey] += parseFloat(item.custo || 0);
+            });
+            aggregated.charts.maintenanceCostByAsset = maintenanceCostByAsset;
+
+
+            // --- Process Stock Data ---
+            const currentStockItems = {}; // { itemName_type_unit: { quantity: X, type: Y } }
+
+            stockData.forEach(item => {
+                const key = `${item.nome_item}-${item.tipo_item}-${item.unidade_medida}`;
+                if (!currentStockItems[key]) {
+                    currentStockItems[key] = {
+                        quantity: 0,
+                        type: item.tipo_item
+                    };
+                }
+                if (item.tipo_movimento === 'Entrada' || item.tipo_movimento === 'Ajuste-Positivo') {
+                    currentStockItems[key].quantity += parseFloat(item.quantidade);
+                } else if (item.tipo_movimento === 'Saida' || item.tipo_movimento === 'Ajuste-Negativo') {
+                    currentStockItems[key].quantity -= parseFloat(item.quantidade);
+                }
+            });
+
+            // Calculate KPIs and distribution for stock
+            for (const key in currentStockItems) {
+                const item = currentStockItems[key];
+                if (item.quantity > 0) {
+                    aggregated.kpis.totalStockItems++; // Count distinct items
+                    if (item.type === 'Materia-Prima') {
+                        aggregated.kpis.totalRawMaterialStock += item.quantity;
+                        aggregated.charts.stockDistribution['Matéria-Prima'] += item.quantity;
+                    } else if (item.type === 'Peca-Acabada') {
+                        aggregated.kpis.totalFinishedGoodsStock += item.quantity;
+                        aggregated.charts.stockDistribution['Peça Acabada'] += item.quantity;
+                    } else {
+                        // Handle other types if necessary, or add to 'Outros'
+                        aggregated.charts.stockDistribution['Outros'] += item.quantity;
+                    }
+                }
+            }
+
+            return aggregated;
+        }
+
+        // Filters the consolidated data by shift and updates the dashboard
+        function filterAndRenderCharts() {
+            const selectedShift = shiftFilterSelect.value;
+            let dataToRender = null;
+
+            if (!allConsolidatedData) {
+                renderDashboard(null); // Clear everything if no data
+                return;
+            }
+
+            if (selectedShift === 'all') {
+                dataToRender = allConsolidatedData;
+            } else {
+                // Filter status data by shift
+                const filteredStatus = allConsolidatedData.raw.status.filter(d => d.shift === selectedShift);
+
+                // Filter quality data by shift (approximate based on time of day)
+                const filteredQuality = allConsolidatedData.raw.quality.filter(item => {
+                    const recordHour = new Date(item.data_registro).getHours();
+                    if (selectedShift === 't1' && (recordHour >= 6 && recordHour < 14)) return true;
+                    if (selectedShift === 't2' && (recordHour >= 14 && recordHour < 22)) return true;
+                    if (selectedShift === 't3' && (recordHour >= 22 || recordHour < 6)) return true;
+                    return false;
+                });
+
+                // Filter maintenance data by shift (this is more complex, as maintenance records don't have a shift directly.
+                // For simplicity, we'll assume maintenance records apply globally or would need a shift field added.
+                // For this dashboard, if a shift is selected, we'll keep maintenance data consolidated for now,
+                // or only show maintenance related to machines/molds active in that shift if we had that mapping.
+                // For now, maintenance and stock will remain global when filtering by shift, as they are not shift-specific in source tables.
+                // A more advanced solution would involve linking maintenance events to active shifts/machines/molds during those shifts.
+                // For the purpose of this consolidated dashboard, we'll keep maintenance and stock global when filtering by shift.
+                // User might want maintenance for a specific shift's machines, which requires more complex joins.
+                // I will keep maintenance and stock KPIs/charts global for now, even when a shift is selected,
+                // as the underlying data doesn't have a direct shift attribute.
+                // If the user wants shift-specific maintenance/stock, they should use the dedicated pages.
+                // For this consolidated dashboard, shift filter primarily affects Production Status and Quality.
+
+                // Recalculate KPIs and charts for the selected shift
+                // This means re-running processRawData with filtered subsets.
+                dataToRender = processRawData(
+                    filteredStatus,
+                    filteredQuality,
+                    allConsolidatedData.raw.maintenance, // Keep global for now
+                    allConsolidatedData.raw.stock // Keep global for now
+                );
+            }
+            filteredDataForCharts = dataToRender; // Cache for export
+            renderDashboard(dataToRender);
+        }
+
+
+        // --- EVENT LISTENERS ---
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Configura a sidebar e modais de configurações
+            setupModal('modal-ai', 'analyze-with-ai'); // Configura o modal de IA
+            setupModal('modal-settings', 'settings-button');
+            setupModal('modal-tutorial', 'show-tutorial');
+
+            // Define a data padrão para os filtros (última semana)
+            const today = new Date();
+            const lastWeek = new Date(today);
+            lastWeek.setDate(today.getDate() - 7);
+            setDateInputs(lastWeek, today);
+
+            // Ativa o filtro rápido "Esta Semana" por padrão
+            const weekBtn = quickFiltersContainer.querySelector('[data-period="week"]');
+            if (weekBtn) weekBtn.click(); // This will trigger apply-filter automatically
+
+            // Listener para filtros rápidos
+            quickFiltersContainer.addEventListener('click', (e) => {
+                if (e.target.matches('button[data-period]')) {
+                    const period = e.target.dataset.period;
+                    const today = new Date();
+                    let start = new Date();
+                    let end = new Date();
+
+                    switch (period) {
+                        case 'today': break;
+                        case 'week':
+                            const dayOfWeek = today.getDay();
+                            start.setDate(today.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1)); // Segunda-feira
+                            break;
+                        case 'month':
+                            start = new Date(today.getFullYear(), today.getMonth(), 1);
+                            break;
+                        case 'semester':
+                            const currentMonth = today.getMonth();
+                            start = new Date(today.getFullYear(), currentMonth < 6 ? 0 : 6, 1);
+                            break;
+                    }
+
+                    setDateInputs(start, end);
+                    applyFilterBtn.click(); // Aplica o filtro automaticamente
+                    
+                    // Atualiza o estado ativo dos botões de filtro rápido
+                    quickFiltersContainer.querySelectorAll('button').forEach(btn => btn.classList.remove('active'));
+                    e.target.classList.add('active');
+                }
+            });
+
+            // Listener para o botão "Aplicar Filtro"
+            applyFilterBtn.addEventListener('click', async () => {
+                const startDate = startDateInput.value;
+                const endDate = endDateInput.value;
+
+                if (!startDate || !endDate) {
+                    alert("Por favor, selecione as datas de início e fim.");
+                    return;
+                }
+
+                await fetchAndProcessAllData(startDate, endDate);
+            });
+
+            // Listener para o filtro de turno
+            shiftFilterSelect.addEventListener('change', filterAndRenderCharts);
+
+            // Listeners para os botões de exportação
+            exportPdfBtn.addEventListener('click', exportDashboardToPdf);
+            exportTxtBtn.addEventListener('click', exportDashboardToTxt);
+
+            // Listener para o botão "Analisar com IA"
+            analyzeWithAiBtn.addEventListener('click', analyzeDashboardWithAI);
+        });
+
+        // --- AI ANALYSIS ---
+        async function analyzeDashboardWithAI() {
+            if (!filteredDataForCharts) {
+                alert("Não há dados para analisar. Aplique um filtro primeiro.");
+                return;
+            }
+
+            aiModal.classList.add('show');
+            aiResultContent.innerHTML = '<p class="text-center text-gray-500"><svg class="animate-spin h-8 w-8 text-blue-500 mx-auto mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Analisando o dashboard com IA... Por favor, aguarde.</p>';
+            aiExportButtons.classList.add('hidden');
+
+            const data = filteredDataForCharts;
+            const selectedShiftText = shiftFilterSelect.options[shiftFilterSelect.selectedIndex].text;
+
+            let prompt = `Você é um analista de operações e qualidade sênior, com foco em manufatura de injeção plástica. Analise o seguinte dashboard consolidado (ou do ${selectedShiftText}) para o período de ${startDateInput.value} a ${endDateInput.value}.`;
+
+            // KPIs
+            prompt += `\n\n**KPIs Principais:**\n`;
+            prompt += `- Produção Total (OK): ${data.kpis.totalOk}\n`;
+            prompt += `- Total Refugo: ${data.kpis.totalRefugo}\n`;
+            prompt += `- Taxa de Refugo Geral: ${data.kpis.refugoRate.toFixed(2)}%\n`;
+            prompt += `- Desvio Médio de Ciclo: ${data.kpis.avgCycleDeviation.toFixed(2)}s\n`;
+            prompt += `- Total Horas Paradas: ${formatMinutesToHoursMinutes(data.kpis.totalDowntimeMinutes)}\n`;
+            prompt += `- Custo Total Manutenção: R$ ${data.kpis.totalMaintenanceCost.toFixed(2).replace('.', ',')}\n`;
+            prompt += `- Total Itens em Estoque: ${data.kpis.totalStockItems}\n`;
+            prompt += `- Matéria-Prima em Estoque: ${data.kpis.totalRawMaterialStock.toFixed(2)} Kg\n`;
+
+            // Charts data summary (simplified for prompt)
+            prompt += `\n\n**Dados dos Gráficos:**\n`;
+            prompt += `- Produção por Turno (OK/Refugo): 1T OK=${data.charts.productionByShift.t1.ok}, Refugo=${data.charts.productionByShift.t1.refugo}; 2T OK=${data.charts.productionByShift.t2.ok}, Refugo=${data.charts.productionByShift.t2.refugo}; 3T OK=${data.charts.productionByShift.t3.ok}, Refugo=${data.charts.productionByShift.t3.refugo}\n`;
+            
+            prompt += `- Taxa de Refugo por Máquina: `;
+            for (const machine in data.charts.scrapRateByMachine) {
+                prompt += `${machine}: ${data.charts.scrapRateByMachine[machine].rate.toFixed(2)}%; `;
+            }
+            prompt += `\n`;
+
+            prompt += `- Horas Paradas por Tipo de Manutenção: `;
+            for (const type in data.charts.downtimeByMaintenanceType) {
+                prompt += `${type}: ${formatMinutesToHoursMinutes(data.charts.downtimeByMaintenanceType[type])}; `;
+            }
+            prompt += `\n`;
+
+            prompt += `- Custo de Manutenção por Ativo: `;
+            for (const asset in data.charts.maintenanceCostByAsset) {
+                prompt += `${asset}: R$ ${data.charts.maintenanceCostByAsset[asset].toFixed(2).replace('.', ',')}; `;
+            }
+            prompt += `\n`;
+
+            prompt += `- Tendência de Desvio de Ciclo (amostra de pontos): ${data.charts.cycleDeviationTrend.slice(0, 5).map(d => `(${d.x}:${d.y.toFixed(2)}s)`).join(', ')}...\n`;
+            prompt += `- Distribuição de Estoque: Matéria-Prima: ${data.charts.stockDistribution['Matéria-Prima'].toFixed(2)} Kg, Peça Acabada: ${data.charts.stockDistribution['Peça Acabada'].toFixed(2)} Unid.\n`;
+
+            prompt += `\n\nCom base nestes dados, forneça um relatório executivo profissional em português, incluindo:\n1. **Resumo Executivo:** Visão geral do desempenho geral e por turno (se aplicável).\n2. **Principais Gargalos e Oportunidades de Melhoria:** Identifique áreas críticas em produção, qualidade, manutenção ou estoque.\n3. **Análise de Tendências e Padrões:** Comente sobre quaisquer tendências ou anomalias notáveis ao longo do tempo ou entre turnos/máquinas.\n4. **Recomendações e Plano de Ação Sugerido:** Proponha ações claras e práticas para otimizar a eficiência, reduzir custos e melhorar a qualidade.\n\nFormate o relatório usando títulos em negrito e listas para facilitar a leitura.`;
+
+            await callGeminiApi(prompt, aiResultContent, aiExportButtons);
+        }
+
+        async function callGeminiApi(prompt, contentElement, exportButtonsElement) {
+            const apiKey = localStorage.getItem('geminiApiKey');
+            if (!apiKey) {
+                alert('Chave API do Gemini não encontrada. Por favor, salve sua chave nas Configurações.');
+                contentElement.innerHTML = '<p class="text-red-500">Chave API não configurada.</p>';
+                return;
+            }
+            showLoading(true);
+            try {
+                const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }] };
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (!response.ok) {
+                    const errorBody = await response.json();
+                    throw new Error(`HTTP error! status: ${response.status} - ${errorBody.error.message}`);
+                }
+                const result = await response.json();
+                if (result.candidates && result.candidates.length > 0) {
+                    const text = result.candidates[0].content.parts[0].text;
+                    let htmlResult = text
+                        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                        .replace(/^- (.*$)/gm, '<li class="ml-4 list-disc">$1</li>')
+                        .replace(/\n/g, '<br>');
+                    contentElement.innerHTML = htmlResult;
+                    exportButtonsElement.classList.remove('hidden');
+                } else {
+                    throw new Error("Resposta da API inválida ou sem conteúdo.");
+                }
+            } catch (error) {
+                console.error('Erro na chamada da API Gemini:', error);
+                contentElement.innerHTML = `<p class="text-red-500">Ocorreu um erro ao buscar a análise da IA. (Erro: ${error.message})</p>`;
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // --- EXPORT FUNCTIONS ---
+        function exportDashboardToPdf() {
+            if (!filteredDataForCharts) {
+                alert("Não há dados para exportar.");
+                return;
+            }
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF('p', 'pt', 'a4');
+            const addChartToPdf = (chartInstance, y) => {
+                const imgData = chartInstance.toBase64Image();
+                doc.addImage(imgData, 'PNG', 40, y, 515, 280); // Ajuste de tamanho para A4
+                return y + 300;
+            };
+
+            doc.setFontSize(18);
+            doc.text(`Dashboard Geral Consolidado`, 40, 40);
+            doc.setFontSize(12);
+            doc.text(`Período: ${startDateInput.value} a ${endDateInput.value}`, 40, 60);
+            doc.text(`Turno: ${shiftFilterSelect.options[shiftFilterSelect.selectedIndex].text}`, 40, 75);
+
+            let currentY = 100;
+
+            // KPIs
+            doc.setFontSize(14);
+            doc.text(`KPIs de Desempenho:`, 40, currentY);
+            currentY += 15;
+            doc.setFontSize(12);
+            doc.text(`Produção Total (OK): ${filteredDataForCharts.kpis.totalOk.toLocaleString('pt-BR')}`, 50, currentY);
+            currentY += 15;
+            doc.text(`Total Refugo: ${filteredDataForCharts.kpis.totalRefugo.toLocaleString('pt-BR')}`, 50, currentY);
+            currentY += 15;
+            doc.text(`Taxa de Refugo: ${filteredDataForCharts.kpis.refugoRate.toFixed(2)}%`, 50, currentY);
+            currentY += 15;
+            doc.text(`Desvio Médio Ciclo: ${filteredDataForCharts.kpis.avgCycleDeviation.toFixed(2)}s`, 50, currentY);
+            currentY += 15;
+            doc.text(`Total Horas Paradas: ${formatMinutesToHoursMinutes(filteredDataForCharts.kpis.totalDowntimeMinutes)}`, 50, currentY);
+            currentY += 15;
+            doc.text(`Custo Total Manutenção: R$ ${filteredDataForCharts.kpis.totalMaintenanceCost.toFixed(2).replace('.', ',')}`, 50, currentY);
+            currentY += 15;
+            doc.text(`Total Itens em Estoque: ${filteredDataForCharts.kpis.totalStockItems.toLocaleString('pt-BR')}`, 50, currentY);
+            currentY += 15;
+            doc.text(`Matéria-Prima em Estoque: ${filteredDataForCharts.kpis.totalRawMaterialStock.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kg`, 50, currentY);
+            currentY += 30;
+
+
+            // Gráficos
+            if (productionByShiftChartInstance) {
+                currentY = addChartToPdf(productionByShiftChartInstance, currentY);
+                doc.addPage();
+                currentY = 40;
+            }
+            if (scrapRateByMachineChartInstance) {
+                currentY = addChartToPdf(scrapRateByMachineChartInstance, currentY);
+                doc.addPage();
+                currentY = 40;
+            }
+            if (downtimeByMaintenanceTypeChartInstance) {
+                currentY = addChartToPdf(downtimeByMaintenanceTypeChartInstance, currentY);
+                doc.addPage();
+                currentY = 40;
+            }
+            if (maintenanceCostByAssetChartInstance) {
+                currentY = addChartToPdf(maintenanceCostByAssetChartInstance, currentY);
+                doc.addPage();
+                currentY = 40;
+            }
+            if (cycleDeviationTrendChartInstance) {
+                currentY = addChartToPdf(cycleDeviationTrendChartInstance, currentY);
+                doc.addPage();
+                currentY = 40;
+            }
+            if (stockDistributionChartInstance) {
+                currentY = addChartToPdf(stockDistributionChartInstance, currentY);
+            }
+
+            doc.save(`dashboard_geral_consolidado_${formatDate(new Date())}.pdf`);
+        }
+
+        function exportDashboardToTxt() {
+            if (!filteredDataForCharts) {
+                alert("Não há dados para exportar.");
+                return;
+            }
+
+            let content = `RELATÓRIO DO DASHBOARD GERAL CONSOLIDADO\n`;
+            content += `Período: ${startDateInput.value} a ${endDateInput.value}\n`;
+            content += `Turno: ${shiftFilterSelect.options[shiftFilterSelect.selectedIndex].text}\n\n`;
+
+            content += `--- KPIs de Desempenho ---\n`;
+            content += `Produção Total (OK): ${filteredDataForCharts.kpis.totalOk.toLocaleString('pt-BR')}\n`;
+            content += `Total Refugo: ${filteredDataForCharts.kpis.totalRefugo.toLocaleString('pt-BR')}\n`;
+            content += `Taxa de Refugo: ${filteredDataForCharts.kpis.refugoRate.toFixed(2)}%\n`;
+            content += `Desvio Médio Ciclo: ${filteredDataForCharts.kpis.avgCycleDeviation.toFixed(2)}s\n`;
+            content += `Total Horas Paradas: ${formatMinutesToHoursMinutes(filteredDataForCharts.kpis.totalDowntimeMinutes)}\n`;
+            content += `Custo Total Manutenção: R$ ${filteredDataForCharts.kpis.totalMaintenanceCost.toFixed(2).replace('.', ',')}\n`;
+            content += `Total Itens em Estoque: ${filteredDataForCharts.kpis.totalStockItems.toLocaleString('pt-BR')}\n`;
+            content += `Matéria-Prima em Estoque: ${filteredDataForCharts.kpis.totalRawMaterialStock.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kg\n\n`;
+
+            content += `--- Gráficos Detalhados ---\n\n`;
+
+            // Produção OK vs. Refugo por Turno
+            content += `Produção OK vs. Refugo por Turno:\n`;
+            content += `- 1º Turno: OK=${filteredDataForCharts.charts.productionByShift.t1.ok}, Refugo=${filteredDataForCharts.charts.productionByShift.t1.refugo}\n`;
+            content += `- 2º Turno: OK=${filteredDataForCharts.charts.productionByShift.t2.ok}, Refugo=${filteredDataForCharts.charts.productionByShift.t2.refugo}\n`;
+            content += `- 3º Turno: OK=${filteredDataForCharts.charts.productionByShift.t3.ok}, Refugo=${filteredDataForCharts.charts.productionByShift.t3.refugo}\n\n`;
+
+            // Taxa de Refugo por Máquina
+            content += `Taxa de Refugo por Máquina:\n`;
+            for (const machine in filteredDataForCharts.charts.scrapRateByMachine) {
+                const data = filteredDataForCharts.charts.scrapRateByMachine[machine];
+                content += `- ${machine}: ${data.rate.toFixed(2)}%\n`;
+            }
+            content += `\n`;
+
+            // Horas Paradas por Tipo de Manutenção
+            content += `Horas Paradas por Tipo de Manutenção:\n`;
+            for (const type in filteredDataForCharts.charts.downtimeByMaintenanceType) {
+                const minutes = filteredDataForCharts.charts.downtimeByMaintenanceType[type];
+                content += `- ${type}: ${formatMinutesToHoursMinutes(minutes)}\n`;
+            }
+            content += `\n`;
+
+            // Custo de Manutenção por Ativo
+            content += `Custo de Manutenção por Ativo:\n`;
+            for (const asset in filteredDataForCharts.charts.maintenanceCostByAsset) {
+                const cost = filteredDataForCharts.charts.maintenanceCostByAsset[asset];
+                content += `- ${asset}: R$ ${cost.toFixed(2).replace('.', ',')}\n`;
+            }
+            content += `\n`;
+
+            // Tendência Diária de Desvio de Ciclo
+            content += `Tendência Diária de Desvio de Ciclo (Data: Desvio):\n`;
+            filteredDataForCharts.charts.cycleDeviationTrend.forEach(point => {
+                content += `- ${point.x}: ${point.y.toFixed(2)}s\n`;
+            });
+            content += `\n`;
+
+            // Distribuição de Estoque por Tipo de Item
+            content += `Distribuição de Estoque por Tipo de Item:\n`;
+            for (const type in filteredDataForCharts.charts.stockDistribution) {
+                const quantity = filteredDataForCharts.charts.stockDistribution[type];
+                content += `- ${type}: ${quantity.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${type === 'Matéria-Prima' ? 'Kg' : (type === 'Peça Acabada' ? 'Unid.' : '')}\n`;
+            }
+            content += `\n`;
+
+            const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `dashboard_geral_consolidado_${formatDate(new Date())}.txt`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
+
+        function exportarAnaliseTXT(type) {
+            const contentElement = aiResultContent;
+            const title = 'Análise Geral do Dashboard com IA';
+            const contentText = contentElement.innerText;
+            if (!contentText) {
+                alert("Não há análise para exportar.");
+                return;
+            }
+            let fileContent = `${title.toUpperCase()}\nPeríodo: ${startDateInput.value} a ${endDateInput.value}\nTurno: ${shiftFilterSelect.options[shiftFilterSelect.selectedIndex].text}\n\n=========================================\n\n${contentText}`;
+            const blob = new Blob([fileContent], { type: "text/plain;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = `analise_dashboard_geral_${formatDate(new Date())}.txt`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
+
+        function exportarAnalisePDF(type) {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+
+            const contentElement = aiResultContent;
+            const titleText = 'Análise Geral do Dashboard com IA';
+
+            if (!contentElement.innerHTML || contentElement.innerText.trim().startsWith('Analisando dados')) {
+                alert("Não há análise da IA para exportar ou a análise está em andamento.");
+                return;
+            }
+
+            let markdownContent = contentElement.innerText || contentElement.textContent || '';
+            let htmlContent = '';
+            // Basic Markdown to HTML conversion for PDF
+            htmlContent = markdownContent
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/^- (.*$)/gm, '<li>$1</li>')
+                .replace(/\n/g, '<br>');
+
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = htmlContent;
+
+            const pageHeight = doc.internal.pageSize.getHeight();
+            const pageWidth = doc.internal.pageSize.getWidth();
+            const margin = 18;
+            let cursorY = margin;
+
+            function addHeader(title) {
+                doc.setFontSize(18);
+                doc.setFont(undefined, 'bold');
+                doc.text(title, margin, cursorY, { maxWidth: pageWidth - margin * 2, align: 'left' });
+                cursorY += 12;
+                doc.setFontSize(12);
+                doc.setFont(undefined, 'normal');
+                doc.text(`Período da Análise: ${startDateInput.value} a ${endDateInput.value}`, margin, cursorY, { maxWidth: pageWidth - margin * 2, align: 'left' });
+                doc.text(`Turno: ${shiftFilterSelect.options[shiftFilterSelect.selectedIndex].text}`, margin, cursorY + 6, { maxWidth: pageWidth - margin * 2, align: 'left' });
+                cursorY += 14;
+                doc.setLineWidth(0.3);
+                doc.setDrawColor(180);
+                doc.line(margin, cursorY, pageWidth - margin, cursorY);
+                cursorY += 14;
+            }
+
+            addHeader(titleText);
+
+            function insertText(text, fontStyle = 'normal', fontSize = 11, offsetX = margin, spacing = 6) {
+                doc.setFont(undefined, fontStyle);
+                doc.setFontSize(fontSize);
+                const maxWidth = pageWidth - offsetX - margin;
+                const splitText = doc.splitTextToSize(text, maxWidth);
+                for (const subLine of splitText) {
+                    if (cursorY + spacing > pageHeight - margin) {
+                        doc.addPage();
+                        cursorY = margin;
+                        addHeader(titleText);
+                        doc.setFont(undefined, fontStyle);
+                        doc.setFontSize(fontSize);
+                    }
+                    doc.text(subLine, offsetX, cursorY, { maxWidth, align: 'justify' });
+                    cursorY += spacing;
+                }
+            }
+            
+            let globalOlIndex = 1; // Reset for each new analysis
+            function parseNodes(nodes, listLevel = 0) {
+                nodes.forEach(node => {
+                    if (node.nodeType === Node.ELEMENT_NODE) {
+                        switch (node.nodeName) {
+                            case 'H1':
+                            case 'H2':
+                            case 'H3':
+                                insertText(node.textContent.trim(), 'bold', 15, margin, 10);
+                                cursorY += 6;
+                                break;
+                            case 'H4':
+                                insertText(node.textContent.trim(), 'bold', 12, margin, 8);
+                                cursorY += 6;
+                                break;
+                            case 'UL':
+                                node.childNodes.forEach(li => {
+                                    if (li.nodeName === 'LI') {
+                                        insertText('• ' + li.textContent.trim(), 'normal', 10, margin + 8 + listLevel * 6, 6);
+                                    }
+                                });
+                                cursorY += 2;
+                                break;
+                            case 'OL':
+                                node.childNodes.forEach(li => {
+                                    if (li.nodeName === 'LI') {
+                                        insertText(`${globalOlIndex}. ` + li.textContent.trim(), 'bold', 10, margin + 4);
+                                        globalOlIndex++;
+                                    }
+                                });
+                                cursorY += 2;
+                                break;
+                            case 'P':
+                                if (node.innerHTML.includes('<strong>')) {
+                                    node.childNodes.forEach(cn => {
+                                        if (cn.nodeName === 'STRONG') {
+                                            insertText(cn.textContent.trim(), 'bold', 12, margin, 6);
+                                        } else if (cn.nodeType === Node.TEXT_NODE) {
+                                            insertText(cn.textContent.trim(), 'normal', 11, margin, 6);
+                                        }
+                                    });
+                                } else {
+                                    insertText(node.textContent.trim(), 'normal', 11, margin, 6);
+                                }
+                                cursorY += 2;
+                                break;
+                            case 'STRONG':
+                                insertText(node.textContent.trim(), 'bold', 12, margin, 6);
+                                break;
+                            case 'BR':
+                                cursorY += 3;
+                                break;
+                            default:
+                                insertText(node.textContent.trim(), 'normal', 12, margin, 6);
+                        }
+                    } else if (node.nodeType === Node.TEXT_NODE) {
+                        if (node.textContent.trim() !== '') {
+                            insertText(node.textContent.trim(), 'normal', 11, margin, 6);
+                        }
+                    }
+                });
+            }
+
+            parseNodes(Array.from(tempDiv.childNodes));
+
+            doc.save(`analise_dashboard_geral_${formatDate(new Date())}.pdf`);
+        }
+    </script>
+</body>
+</html>

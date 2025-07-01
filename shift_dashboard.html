@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title id="pageTitle">Dashboard por Turno - CDM-MB</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <style>
+        /* Variáveis CSS para largura da sidebar */
+        :root { --sidebar-width: 250px; --sidebar-width-collapsed: 80px; }
+
+        /* Estilos globais do corpo e fonte */
+        body { background-color: #f3f4f6; font-family: 'Inter', sans-serif; }
+
+        /* Estilo para o conteúdo principal, ajustando a margem esquerda com base na sidebar */
+        .main-content { transition: margin-left 0.3s ease; margin-left: var(--sidebar-width-collapsed); }
+
+        /* Estilos da sidebar */
+        .sidebar { width: var(--sidebar-width); transition: width 0.3s ease, transform 0.3s ease; }
+        .sidebar.collapsed { width: var(--sidebar-width-collapsed); }
+        /* Oculta o texto de navegação quando a sidebar está colapsada */
+        .sidebar.collapsed .nav-text, .sidebar.collapsed .long-title { display: none; }
+
+        /* Media queries para responsividade em telas menores (mobile) */
+        @media (max-width: 768px) {
+            .main-content { margin-left: 0; } /* Remove a margem em mobile */
+            .sidebar { transform: translateX(-100%); width: var(--sidebar-width); } /* Oculta a sidebar fora da tela */
+            .sidebar.show { transform: translateX(0); } /* Mostra a sidebar quando ativada */
+            /* Garante que o texto apareça no modo mobile quando a sidebar está visível */
+            .sidebar.show .nav-text, .sidebar.show .long-title { display: inline; }
+            .sidebar.collapsed { width: var(--sidebar-width); } /* Em mobile, a sidebar não colapsa para um tamanho menor, apenas aparece/desaparece */
+        }
+
+        /* Estilos para botões de ação */
+        .action-button {
+            padding: 0.5rem 1rem;
+            border-radius: 0.375rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        /* Estilos para campos de formulário (inputs, selects) */
+        .form-input, .form-select {
+            padding: 0.6rem 0.75rem;
+            border: 1px solid #d1d5db;
+            border-radius: 0.375rem;
+            box-sizing: border-box; /* Garante que padding e border sejam incluídos na largura/altura */
+            font-size: 0.875rem;
+            width: 100%;
+            background-color: white;
+        }
+
+        /* Variações de cores para botões */
+        .btn-primary { background-color: #4f46e5; color: white; }
+        .btn-primary:hover { background-color: #4338ca; }
+        .btn-secondary { background-color: #6b7280; color: white; }
+        .btn-secondary:hover { background-color: #4b5563; }
+        /* Botões desabilitados */
+        .action-button:disabled { background-color: #9ca3af; cursor: not-allowed; opacity: 0.7; }
+
+        /* Estilos para cards (contêineres de conteúdo) */
+        .card {
+            background-color: white;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1);
+            padding: 1.5rem;
+        }
+        /* Loading Spinner */
+        #loadingOverlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background-color: rgba(255, 255, 255, 0.7);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+        }
+        #loadingSpinner {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #4f46e5;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* KPI Cards */
+        .kpi-card {
+            background-color: white;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1);
+            padding: 1.5rem;
+            text-align: center;
+        }
+        .kpi-card-title {
+            font-size: 0.875rem;
+            color: #6b7280;
+            margin-bottom: 0.5rem;
+        }
+        .kpi-card-value {
+            font-size: 2.25rem;
+            font-weight: 700;
+            color: #1f2937;
+        }
+
+        /* Estilos para os botões de acesso às seções */
+        .section-access-button {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+            background-color: #3b82f6; /* Azul */
+            color: white;
+            font-size: 1.125rem;
+            font-weight: 600;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1);
+            transition: background-color 0.2s ease, transform 0.2s ease;
+            text-align: center;
+        }
+        .section-access-button:hover {
+            background-color: #2563eb; /* Azul mais escuro */
+            transform: translateY(-2px);
+        }
+        .section-access-button svg {
+            width: 2.5rem;
+            height: 2.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        /* Estilos para a lista de alertas */
+        #realtime-alerts li {
+            padding: 0.75rem;
+            border-bottom: 1px solid #e5e7eb;
+            display: flex;
+            align-items: center;
+            font-size: 0.9rem;
+            color: #374151;
+        }
+        #realtime-alerts li:last-child {
+            border-bottom: none;
+        }
+        #realtime-alerts .alert-icon {
+            margin-right: 0.75rem;
+            font-size: 1.2rem;
+        }
+        .alert-icon.problem { color: #ef4444; } /* Vermelho para problemas */
+        .alert-icon.warning { color: #f59e0b; } /* Laranja para avisos */
+        .alert-icon.info { color: #3b82f6; } /* Azul para informações */
+
+        /* Estilos para a caixa de mensagem personalizada */
+        .message-box {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #4CAF50; /* Green for success */
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            z-index: 1100; /* Above modals */
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+            min-width: 250px;
+            text-align: center;
+        }
+        .message-box.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+        .message-box.error {
+            background-color: #f44336; /* Red for error */
+        }
+    </style>
+</head>
+<body class="bg-gray-200">
+    <!-- Overlay de carregamento -->
+    <div id="loadingOverlay" class="flex items-center justify-center">
+        <div id="loadingSpinner"></div>
+    </div>
+
+    <!-- Message Box Container -->
+    <div id="messageBoxContainer"></div>
+
+    <!-- SIDEBAR -->
+      <!-- SIDEBAR -->
+    <aside id="sidebar" class="sidebar bg-gray-800 text-white h-screen fixed top-0 left-0 z-40 flex flex-col collapsed">
+        <div class="p-4 flex items-center justify-between h-16 border-b border-gray-700">
+            <h1 class="text-2xl font-bold whitespace-nowrap overflow-hidden">
+                <span class="long-title">CDM - MB</span>
+            </h1>
+            <button id="close-sidebar" class="text-gray-400 hover:text-white md:hidden text-3xl leading-none">&times;</button>
+        </div>
+        <nav class="flex-grow p-2 overflow-y-auto">
+            <ul>
+                <li>
+                    <a href="index_geral.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Página Inicial">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m0 0l7 7m-7-7v10a1 1 0 01-1 1H6a1 1 0 01-1-1v-10"></path></svg>
+                        <span class="ml-4 nav-text">Página Inicial</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="absenteismo.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Absenteísmo">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.225-1.26-.623-1.741M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 0c-2.21 0-4 2.24-4 5v2h8v-2c0-2.76-1.79-5-4-5z"></path></svg>
+                        <span class="ml-4 nav-text">Absenteísmo</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="dashboard.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Dashboard">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                        <span class="ml-4 nav-text">Dashboard</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="status_t1.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Status Máquinas">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                        <span class="ml-4 nav-text">Status 1ºT</span>
+                    </a>
+                </li>
+                 <li>
+                    <a href="status.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Status Máquinas">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                        <span class="ml-4 nav-text">Status 2ºT</span>
+                    </a>
+                </li>
+                 <li>
+                    <a href="status_t3.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Status Máquinas">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                        <span class="ml-4 nav-text">Status 3ºT</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="cadastro-detalhado.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Cadastro Máquinas/Moldes">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8H4a2 2 0 01-2-2v-4A2 2 0 014 12h2m-2 4h4m5-4h5a2 2 0 012 2v4a2 2 0 01-2 2h-5m-2-4H9m2 2h2"></path></svg>
+                        <span class="ml-4 nav-text">Cadastro Detalhado</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="analise_causa_raiz.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Análise de Causa Raiz">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                        <span class="ml-4 nav-text">Análise de Causa Raiz</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="ordens_servico.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Ordens de Serviço">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
+                        <span class="ml-4 nav-text">Ordens de Serviço</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="gestao_qualidade.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Gestão de Qualidade">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        <span class="ml-4 nav-text">Gestão de Qualidade</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="dashboard_qualidade.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Dashboard de Qualidade">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z"></path></svg>
+                        <span class="ml-4 nav-text">Dashboard de Qualidade</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="gestao_manutencao.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Gestão de Manutenção">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.096 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                        <span class="ml-4 nav-text">Gestão de Manutenção</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="gestao_estoque.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Gestão de Estoque">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"></path></svg>
+                        <span class="ml-4 nav-text">Gestão de Estoque</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="dashboard_geral_consolidado.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Dashboard Geral Consolidado">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v8m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v12a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                        <span class="ml-4 nav-text">Dashboard Geral</span>
+                    </a>
+                </li>
+            </ul>
+        </nav>
+        <div class="p-2 border-t border-gray-700">
+            <a href="#" id="settings-button" class="flex items-center p-3 rounded-lg hover:bg-gray-700" title="Configurações">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.096 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                <span class="ml-4 nav-text">Configurações</span>
+            </a>
+        </div>
+    </aside>
+    <div id="sidebar-overlay" class="fixed inset-0 bg-black bg-opacity-50 z-30 hidden md:hidden"></div>
+
+    <!-- MAIN CONTENT WRAPPER -->
+    <div class="main-content">
+        <!-- HEADER -->
+        <header class="bg-white shadow-md sticky top-0 z-20 h-16 flex items-center px-6">
+            <button id="menu-button" class="p-2 text-gray-500 rounded-md -ml-2 mr-2">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+            </button>
+            <h1 class="text-xl font-semibold text-gray-800">
+                <span class="hidden sm:inline">Ciclos Diários de Máquinas - MB</span>
+                <span class="sm:hidden">CDM - MB</span>
+            </h1>
+        </header>
+
+        <!-- PAGE CONTENT -->
+        <main class="p-4 sm:p-6 lg:p-8">
+            <h1 class="text-3xl font-bold text-gray-900 mb-6 text-center">
+                DASHBOARD DO <span id="shiftName" class="text-indigo-600"></span>
+            </h1>
+
+            <!-- KPIs do Turno -->
+            <div class="card mb-6">
+                <h2 class="text-lg font-semibold text-gray-800 mb-4">Resumo do Turno (Hoje)</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div class="kpi-card">
+                        <h3 class="kpi-card-title">Produção OK (Turno)</h3>
+                        <p id="kpiShiftOk" class="kpi-card-value text-green-600">0</p>
+                    </div>
+                    <div class="kpi-card">
+                        <h3 class="kpi-card-title">Refugo (Turno)</h3>
+                        <p id="kpiShiftRefugo" class="kpi-card-value text-red-600">0</p>
+                    </div>
+                    <div class="kpi-card">
+                        <h3 class="kpi-card-title">Taxa Refugo (Turno)</h3>
+                        <p id="kpiShiftScrapRate" class="kpi-card-value text-yellow-600">0.00%</p>
+                    </div>
+                    <div class="kpi-card">
+                        <h3 class="kpi-card-title">Desvio Ciclo Médio (Turno)</h3>
+                        <p id="kpiShiftCycleDeviation" class="kpi-card-value text-blue-600">0.00s</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Alertas do Turno -->
+            <div class="card mb-6">
+                <h2 class="text-lg font-semibold text-gray-800 mb-4">Alertas e Avisos do Turno</h2>
+                <ul id="shift-alerts" class="bg-gray-50 rounded-lg overflow-hidden">
+                    <li class="text-gray-500 text-center py-4">Nenhum alerta para este turno.</li>
+                </ul>
+            </div>
+
+            <!-- Botões de Acesso Rápido às Seções -->
+            <div class="card">
+                <h2 class="text-lg font-semibold text-gray-800 mb-4">Acesso Rápido às Seções</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                    <a href="#" id="linkStatus" class="section-access-button">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                        Status Máquinas
+                    </a>
+                    <a href="#" id="linkParadas" class="section-access-button">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        Registro de Paradas
+                    </a>
+                    <a href="#" id="linkAbsenteismo" class="section-access-button">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.225-1.26-.623-1.741M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 0c-2.21 0-4 2.24-4 5v2h8v-2c0-2.76-1.79-5-4-5z"></path></svg>
+                        Absenteísmo
+                    </a>
+                    <a href="#" id="linkQualidade" class="section-access-button">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        Gestão de Qualidade
+                    </a>
+                    <a href="#" id="linkManutencao" class="section-access-button">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.096 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                        Gestão de Manutenção
+                    </a>
+                    <a href="#" id="linkEstoque" class="section-access-button">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"></path></svg>
+                        Gestão de Estoque
+                    </a>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- MODAL DE CONFIGURAÇÕES (para chave API Gemini) -->
+    <div id="modal-settings" class="modal-overlay">
+        <div class="modal-content max-w-lg">
+            <div class="modal-header">
+                <h2 class="modal-title">Configurações</h2>
+                <button class="modal-close-button" data-close-modal-id="modal-settings">&times;</button>
+            </div>
+            <div>
+                <label for="gemini-api-key" class="block text-sm font-medium text-gray-700 mb-1">Sua Chave API Google Gemini</label>
+                <input type="password" id="gemini-api-key" class="w-full p-2 border rounded-md mb-2" placeholder="Cole sua chave aqui">
+                <button id="save-api-key" class="action-button btn-primary w-full mb-4">Salvar Chave</button>
+                <div class="text-center">
+                    <button id="show-tutorial" class="text-indigo-600 hover:underline text-sm">Como Obter Chave API?</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE TUTORIAL (como obter chave API) -->
+    <div id="modal-tutorial" class="modal-content">
+        <div class="modal-header">
+            <h2 class="modal-title">Como Obter sua Chave API do Google Gemini</h2>
+            <button class="modal-close-button" data-close-modal-id="modal-tutorial">&times;</button>
+        </div>
+        <div class="prose max-w-none text-gray-700">
+            <p>Para utilizar todas as funcionalidades de análise por IA, você precisará de uma Chave API do Google Gemini. O Gemini 1.5 Flash, que é necessária, oferece um nível gratuito generoso.</p>
+            <h4>Passo 1: Acesse o Google AI Studio</h4>
+            <p>Se você ainda não tem uma conta Google, precisará criar uma. Depois, acesse o Google AI Studio:</p>
+            <a href="https://aistudio.google.com/app/apikey" target="_blank" class="action-button btn-primary">Ir para o Google AI Studio &rarr;</a>
+            <h4 class="mt-4">Passo 2: Gere sua Chave API</h4>
+            <ul>
+                <li>Procure pela opção "Get API key" ou "Criar chave API".</li>
+                <li>Clique em "Create API key in new project".</li>
+                <li>Siga as instruções para nomear seu projeto, se necessário.</li>
+                <li>Após a criação, sua chave API será exibida.</li>
+            </ul>
+            <h4>Passo 3: Copie e Cole sua Chave API</h4>
+            <ul>
+                <li>Clique no botão para copiar sua chave API.</li>
+                <li>Volte para esta página (dentro do modal de Configurações).</li>
+                <li>Cole a chave no campo "Sua Chave API Google Gemini".</li>
+                <li>Clique em "Salvar".</li>
+            </ul>
+            <p class="font-semibold mt-4">Importante: Guarde sua chave API em um local seguro e não a compartilhe publicamente.</p>
+        </div>
+        <div class="mt-6 text-center">
+            <button class="action-button btn-secondary" data-close-modal-id="modal-tutorial">Entendi - Fechar Tutorial</button>
+        </div>
+    </div>
+
+    <script>
+        // --- SUPABASE CLIENT CONFIGURATION ---
+        const SUPABASE_URL = 'https://ranhhacbgyfpzrjdynnd.supabase.co'; // Substitua pelo seu URL Supabase
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJhbmhoYWNiZ3lmcHpyamR5bm5kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDM5MDU4OTEsImV4cCI6MjA1OTQ4MTg5MX0.Ey-X4Tz8krKHSICnYdHdBaI3q5WcRgUVwA8jOhfMr7Y'; // Substitua pela sua chave Anon pública
+        const { createClient } = supabase;
+        const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // --- DOM ELEMENTS ---
+        const pageTitle = document.getElementById('pageTitle');
+        const shiftNameDisplay = document.getElementById('shiftName');
+        const kpiShiftOk = document.getElementById('kpiShiftOk');
+        const kpiShiftRefugo = document.getElementById('kpiShiftRefugo');
+        const kpiShiftScrapRate = document.getElementById('kpiShiftScrapRate');
+        const kpiShiftCycleDeviation = document.getElementById('kpiShiftCycleDeviation');
+        const shiftAlertsList = document.getElementById('shift-alerts');
+
+        const linkStatus = document.getElementById('linkStatus');
+        const linkParadas = document.getElementById('linkParadas');
+        const linkAbsenteismo = document.getElementById('linkAbsenteismo');
+        const linkQualidade = document.getElementById('linkQualidade');
+        const linkManutencao = document.getElementById('linkManutencao');
+        const linkEstoque = document.getElementById('linkEstoque');
+
+        // --- UTILITY FUNCTIONS ---
+        const showLoading = (isLoading) => { document.getElementById('loadingOverlay').style.display = isLoading ? 'flex' : 'none'; };
+        const formatDate = (date) => date.toISOString().split('T')[0];
+
+        // Função para exibir mensagens na tela (substitui alert())
+        function showMessageBox(message, type = 'success') {
+            let messageBox = document.getElementById('messageBox');
+            if (!messageBox) {
+                messageBox = document.createElement('div');
+                messageBox.id = 'messageBox';
+                document.getElementById('messageBoxContainer').appendChild(messageBox);
+            }
+            messageBox.className = 'message-box ' + type;
+            messageBox.textContent = message;
+            messageBox.classList.add('show');
+
+            setTimeout(() => {
+                messageBox.classList.remove('show');
+            }, 3000);
+        }
+
+        // --- SIDEBAR & NAVIGATION ---
+        const sidebar = document.getElementById('sidebar');
+        const menuButton = document.getElementById('menu-button');
+        const closeSidebarButton = document.getElementById('close-sidebar');
+        const sidebarOverlay = document.getElementById('sidebar-overlay');
+
+        menuButton.addEventListener('click', () => {
+            if (window.innerWidth < 768) {
+                sidebar.classList.remove('collapsed');
+                sidebar.classList.add('show');
+                sidebarOverlay.classList.remove('hidden');
+            } else {
+                sidebar.classList.toggle('collapsed');
+                document.querySelector('.main-content').style.marginLeft = sidebar.classList.contains('collapsed') ? 'var(--sidebar-width-collapsed)' : 'var(--sidebar-width)';
+            }
+        });
+        closeSidebarButton.addEventListener('click', () => {
+            sidebar.classList.remove('show');
+            sidebarOverlay.classList.add('hidden');
+        });
+        sidebarOverlay.addEventListener('click', () => {
+            sidebar.classList.remove('show');
+            sidebarOverlay.classList.add('hidden');
+        });
+
+        // --- MODAL HANDLING (Configurações e Tutorial da API Key) ---
+        function setupModal(modalId, openTriggerId) {
+            const modal = document.getElementById(modalId);
+            const openBtn = document.getElementById(openTriggerId);
+            if (modal && openBtn) {
+                openBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    modal.classList.add('show');
+                });
+            }
+        }
+
+        document.body.addEventListener('click', (e) => {
+            if (e.target.dataset.closeModalId) {
+                document.getElementById(e.target.dataset.closeModalId).classList.remove('show');
+            }
+        });
+
+        setupModal('modal-settings', 'settings-button');
+        setupModal('modal-tutorial', 'show-tutorial');
+
+        const apiKeyInput = document.getElementById('gemini-api-key');
+        const saveApiKeyBtn = document.getElementById('save-api-key');
+        if (apiKeyInput) apiKeyInput.value = localStorage.getItem('geminiApiKey') || '';
+        if (saveApiKeyBtn) saveApiKeyBtn.addEventListener('click', () => {
+            const key = apiKeyInput.value.trim();
+            if (key) {
+                localStorage.setItem('geminiApiKey', key);
+                showMessageBox('Chave API salva com sucesso!', 'success');
+                document.getElementById('modal-settings').classList.remove('show');
+            } else {
+                showMessageBox('Por favor, insira uma chave API válida.', 'error');
+            }
+        });
+
+        // --- CORE LOGIC: SHIFT DASHBOARD ---
+
+        async function loadShiftDashboardData() {
+            showLoading(true);
+            const urlParams = new URLSearchParams(window.location.search);
+            const shift = urlParams.get('shift'); // 't1', 't2', 't3'
+            const today = formatDate(new Date());
+
+            if (!shift) {
+                shiftNameDisplay.textContent = 'Turno Não Especificado';
+                shiftAlertsList.innerHTML = '<li class="text-red-500 text-center py-4">Turno não especificado na URL.</li>';
+                showLoading(false);
+                return;
+            }
+
+            const shiftNames = { 't1': '1º Turno', 't2': '2º Turno', 't3': '3º Turno' };
+            pageTitle.textContent = `Dashboard do ${shiftNames[shift]} - CDM-MB`;
+            shiftNameDisplay.textContent = shiftNames[shift];
+
+            // CORREÇÃO APLICADA AQUI: Mapeia o nome da tabela de status corretamente
+            let statusTable;
+            if (shift === 't2') {
+                statusTable = 'status_maquinas'; // Para o 2º turno, a tabela é 'status_maquinas'
+            } else {
+                statusTable = `status_maquinas_${shift}`; // Para t1 e t3, é 'status_maquinas_t1' ou 'status_maquinas_t3'
+            }
+            const paradasTable = `paradas_${shift}`; // A tabela de paradas segue o padrão
+
+            try {
+                // 1. Fetch Status Data for this shift
+                const { data: statusData, error: statusError } = await supabaseClient.from(statusTable).select('*').eq('data', today);
+                if (statusError) console.error(`Error fetching ${shift} status:`, statusError);
+
+                // 2. Fetch Quality Data for this shift (filtered by time)
+                let qualityQuery = supabaseClient.from('producao_qualidade').select(`quantidade_ok, quantidade_refugo, maquina, data_registro`).gte('data_registro', `${today}T00:00:00`).lte('data_registro', `${today}T23:59:59`);
+                const shiftStartHour = shift === 't1' ? 6 : (shift === 't2' ? 14 : 22);
+                const shiftEndHour = shift === 't1' ? 14 : (shift === 't2' ? 22 : 6); // Exclusive
+
+                const { data: qualityData, error: qualityError } = await qualityQuery;
+                if (qualityError) console.error(`Error fetching ${shift} quality:`, qualityError);
+
+                const filteredQualityData = qualityData.filter(record => {
+                    const recordHour = new Date(record.data_registro).getHours();
+                    if (shift === 't3') {
+                        return (recordHour >= shiftStartHour || recordHour < shiftEndHour);
+                    } else {
+                        return (recordHour >= shiftStartHour && recordHour < shiftEndHour);
+                    }
+                });
+
+                // 3. Fetch Absenteeism Data for today (global, but check for missing attendance for this shift)
+                const { data: attendanceData, error: attendanceError } = await supabaseClient.from('registros_presenca').select(`*, funcionario:funcionarios (id, nome, tipo)`).eq('data', today);
+                if (attendanceError) console.error("Error fetching attendance:", attendanceError);
+                
+                const totalEmployees = (await supabaseClient.from('funcionarios').select('id')).data.length;
+
+                // 4. Fetch Downtime Data for this shift (filtered by time)
+                let downtimeQuery = supabaseClient.from('registros_manutencao').select(`nome_ativo, data_inicio, data_fim, descricao_servico`).gte('data_inicio', `${today}T00:00:00`).lte('data_inicio', `${today}T23:59:59`);
+                const { data: downtimeData, error: downtimeError } = await downtimeQuery;
+                if (downtimeError) console.error(`Error fetching ${shift} downtime:`, downtimeError);
+
+                const filteredDowntimeData = downtimeData.filter(record => {
+                    const recordHour = new Date(record.data_inicio).getHours();
+                    if (shift === 't3') {
+                        return (recordHour >= shiftStartHour || recordHour < shiftEndHour);
+                    } else {
+                        return (recordHour >= shiftStartHour && recordHour < shiftEndHour);
+                    }
+                });
+
+
+                // --- Process Data for KPIs ---
+                let totalOkShift = 0;
+                let totalRefugoShift = 0;
+                let totalCycleDeviationShift = 0;
+                let cycleDeviationCountShift = 0;
+                const shiftAlerts = [];
+
+                // Production & Quality KPIs
+                filteredQualityData.forEach(record => {
+                    totalOkShift += record.quantidade_ok;
+                    totalRefugoShift += record.quantidade_refugo;
+                });
+                const totalProducedShift = totalOkShift + totalRefugoShift;
+                const shiftScrapRate = totalProducedShift > 0 ? (totalRefugoShift / totalProducedShift) * 100 : 0;
+
+                // Cycle Deviation KPI
+                statusData.forEach(record => {
+                    const deviation = parseFloat(record.ciclo_atual) - (parseFloat(record.ciclo_padrao) * parseInt(record.n_cavidades || 1));
+                    totalCycleDeviationShift += deviation;
+                    cycleDeviationCountShift++;
+                });
+                const avgCycleDeviationShift = cycleDeviationCountShift > 0 ? totalCycleDeviationShift / cycleDeviationCountShift : 0;
+
+                // --- Render KPIs ---
+                kpiShiftOk.textContent = totalOkShift.toLocaleString('pt-BR');
+                kpiShiftRefugo.textContent = totalRefugoShift.toLocaleString('pt-BR');
+                kpiShiftScrapRate.textContent = `${shiftScrapRate.toFixed(2)}%`;
+                kpiShiftCycleDeviation.textContent = `${avgCycleDeviationShift.toFixed(2)}s`;
+
+                // --- Generate Alerts ---
+                // Missing Status Records
+                if (statusData.length === 0) {
+                    shiftAlerts.push({ type: 'warning', message: `Nenhum registro de status de máquinas encontrado para o ${shiftNames[shift]} hoje. Por favor, registre.` });
+                }
+                // High Scrap Rate
+                if (shiftScrapRate > 5) { // Threshold for alert
+                    shiftAlerts.push({ type: 'problem', message: `Taxa de refugo alta (${shiftScrapRate.toFixed(2)}%) no ${shiftNames[shift]}.` });
+                }
+                // Active Downtime
+                filteredDowntimeData.forEach(stop => {
+                    if (!stop.data_fim || new Date(stop.data_fim) > new Date()) {
+                        shiftAlerts.push({
+                            type: 'problem',
+                            message: `Máquina/Molde ${stop.nome_ativo} parada desde ${new Date(stop.data_inicio).toLocaleTimeString('pt-BR')} (${stop.descricao_servico.substring(0, Math.min(stop.descricao_servico.length, 50))}...)`
+                        });
+                    }
+                });
+                // Missing Attendance Records (simplified for shift dashboard)
+                if (attendanceData.length === 0 && totalEmployees > 0) {
+                    shiftAlerts.push({ type: 'warning', message: `Registros de absenteísmo ausentes para o dia de hoje. Verifique o ${shiftNames[shift]}.` });
+                } else {
+                    const registeredEmployeeIds = new Set(attendanceData.map(r => r.funcionario.id));
+                    const allEmployeeIds = (await supabaseClient.from('funcionarios').select('id')).data.map(f => f.id);
+                    const unregisteredCount = allEmployeeIds.filter(id => !registeredEmployeeIds.has(id)).length;
+                    if (unregisteredCount > 0) {
+                        shiftAlerts.push({ type: 'warning', message: `Ainda faltam ${unregisteredCount} registros de absenteísmo para hoje.` });
+                    }
+                }
+
+                // --- Render Alerts ---
+                shiftAlertsList.innerHTML = '';
+                if (shiftAlerts.length === 0) {
+                    shiftAlertsList.innerHTML = '<li class="text-gray-500 text-center py-4">Tudo certo! Nenhum alerta para este turno.</li>';
+                } else {
+                    shiftAlerts.forEach(alert => {
+                        const listItem = document.createElement('li');
+                        listItem.innerHTML = `<span class="alert-icon ${alert.type}">●</span> ${alert.message}`;
+                        shiftAlertsList.appendChild(listItem);
+                    });
+                }
+
+                // --- Setup Section Links ---
+                const todayParam = `?date=${today}`;
+                const shiftParam = `&shift=${shift}`; // To pass to other dashboards for pre-filtering
+
+                linkStatus.href = `${shift === 't1' ? 'status_t1.html' : (shift === 't2' ? 'status.html' : 'status_t3.html')}${todayParam}`; // CORRIGIDO
+                linkParadas.href = `${shift === 't1' ? 'paradas_t1.html' : (shift === 't2' ? 'paradas_t2.html' : 'paradas_t3.html')}${todayParam}`;
+                linkAbsenteismo.href = `absenteismo.html${todayParam}`; // Absenteísmo é geral, mas pode ser filtrado por data
+                linkQualidade.href = `gestao_qualidade.html${todayParam}`; // Qualidade é geral, mas pode ser filtrado por data
+                linkManutencao.href = `gestao_manutencao.html${todayParam}`; // Manutenção é geral, mas pode ser filtrado por data
+                linkEstoque.href = `gestao_estoque.html${todayParam}`; // Estoque é geral, mas pode ser filtrado por data
+
+            } catch (error) {
+                console.error("Erro ao carregar dados do dashboard do turno:", error);
+                shiftAlertsList.innerHTML = '<li class="text-red-500 text-center py-4">Erro ao carregar dados do turno. Verifique o console.</li>';
+                // Reset KPIs on error
+                kpiShiftOk.textContent = 'N/A';
+                kpiShiftRefugo.textContent = 'N/A';
+                kpiShiftScrapRate.textContent = 'N/A';
+                kpiShiftCycleDeviation.textContent = 'N/A';
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // --- INITIALIZATION ---
+        document.addEventListener('DOMContentLoaded', () => {
+            loadShiftDashboardData();
+            // Atualiza os dados a cada 5 minutos (300000 ms)
+            setInterval(loadShiftDashboardData, 300000);
+        });
+    </script>
+</body>
+</html>

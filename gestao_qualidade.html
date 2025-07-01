@@ -1,0 +1,1333 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gestão de Qualidade e Eficiência - CDM-MB</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script> <!-- Adicionado para renderizar Markdown da IA -->
+    <style>
+        /* Variáveis CSS para largura da sidebar */
+        :root { --sidebar-width: 250px; --sidebar-width-collapsed: 80px; }
+
+        /* Estilos globais do corpo e fonte */
+        body { background-color: #f3f4f6; font-family: 'Inter', sans-serif; }
+
+        /* Estilo para o conteúdo principal, ajustando a margem esquerda com base na sidebar */
+        .main-content { transition: margin-left 0.3s ease; margin-left: var(--sidebar-width-collapsed); }
+
+        /* Estilos da sidebar */
+        .sidebar { width: var(--sidebar-width); transition: width 0.3s ease, transform 0.3s ease; }
+        .sidebar.collapsed { width: var(--sidebar-width-collapsed); }
+        /* Oculta o texto de navegação quando a sidebar está colapsada */
+        .sidebar.collapsed .nav-text, .sidebar.collapsed .long-title { display: none; }
+
+        /* Media queries para responsividade em telas menores (mobile) */
+        @media (max-width: 768px) {
+            .main-content { margin-left: 0; } /* Remove a margem em mobile */
+            .sidebar { transform: translateX(-100%); width: var(--sidebar-width); } /* Oculta a sidebar fora da tela */
+            .sidebar.show { transform: translateX(0); } /* Mostra a sidebar quando ativada */
+            /* Garante que o texto apareça no modo mobile quando a sidebar está visível */
+            .sidebar.show .nav-text, .sidebar.show .long-title { display: inline; }
+            .sidebar.collapsed { width: var(--sidebar-width); } /* Em mobile, a sidebar não colapsa para um tamanho menor, apenas aparece/desaparece */
+        }
+
+        /* Estilos para botões de ação */
+        .action-button {
+            padding: 0.6rem 1rem;
+            border-radius: 0.375rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        /* Estilos para campos de formulário (inputs, selects) */
+        .form-input, .form-select, .form-textarea {
+            padding: 0.6rem 0.75rem;
+            border: 1px solid #d1d5db;
+            border-radius: 0.375rem;
+            box-sizing: border-box; /* Garante que padding e border sejam incluídos na largura/altura */
+            font-size: 0.875rem;
+            width: 100%;
+            background-color: white;
+        }
+
+        /* Variações de cores para botões */
+        .btn-primary { background-color: #4f46e5; color: white; }
+        .btn-primary:hover { background-color: #4338ca; }
+        .btn-secondary { background-color: #6b7280; color: white; }
+        .btn-secondary:hover { background-color: #4b5563; }
+        .btn-add { background-color: #28a745; color: white; }
+        .btn-add:hover { background-color: #218838; }
+        .btn-update { background-color: #f59e0b; color: white; }
+        .btn-update:hover { background-color: #d97706; }
+        .btn-cancel-edit { background-color: #6b7280; color: white; }
+        .btn-cancel-edit:hover { background-color: #4b5563; }
+        .btn-load { background-color: #6366f1; }
+        .btn-load:hover { background-color: #4f46e5; }
+        .btn-register { background-color: #5a67d8; color: white; }
+        .btn-register:hover { background-color: #434190; }
+        .btn-danger { background-color: #dc2626; color: white; }
+        .btn-danger:hover { background-color: #991b1b; }
+        .remove-button { background: none; border: none; color: #ef4444; cursor: pointer; text-decoration: underline; }
+        .edit-button { background: none; border: none; color: #3b82f6; cursor: pointer; text-decoration: underline; margin-right: 1rem; }
+        .btn-gemini { background: linear-gradient(to right, #4f46e5, #9333ea); color: white; }
+        .btn-gemini:hover:not(:disabled) { background: linear-gradient(to right, #4338ca, #7e22ce); }
+
+        /* Estilos para modais (pop-ups) */
+        .modal-overlay {
+            position: fixed; /* Fixa o modal na tela */
+            inset: 0; /* Ocupa toda a tela */
+            background-color: rgba(0,0,0,0.5); /* Fundo semi-transparente */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1050; /* Garante que o modal esteja acima de outros elementos */
+            opacity: 0; /* Inicialmente invisível */
+            visibility: hidden; /* Esconde o modal para não ser clicável */
+            transition: opacity 0.3s, visibility 0.3s; /* Transição suave */
+        }
+        .modal-overlay.show {
+            opacity: 1; /* Torna visível */
+            visibility: visible; /* Torna clicável */
+        }
+        .modal-content {
+            background-color: white;
+            padding: 1.5rem 2rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); /* Sombra para destaque */
+            width: 90%; /* Largura em mobile */
+            max-width: 700px; /* Largura máxima em desktop */
+            transform: scale(0.95); /* Pequena escala para efeito de entrada */
+            transition: transform 0.3s; /* Transição suave */
+        }
+        .modal-overlay.show .modal-content {
+            transform: scale(1); /* Volta à escala normal ao aparecer */
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #e5e7eb; /* Linha divisória */
+            padding-bottom: 0.75rem;
+            margin-bottom: 1rem;
+        }
+        .modal-title { font-size: 1.25rem; font-weight: 600; color: #1f2937; }
+        .modal-close-button {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            line-height: 1;
+            cursor: pointer;
+            color: #9ca3af;
+        }
+        .modal-close-button:hover{color: #4b5563;}
+
+        /* Loading Spinner */
+        #loadingOverlay {
+            display: none; /* Escondido por padrão */
+            position: fixed;
+            inset: 0;
+            background-color: rgba(255, 255, 255, 0.7); /* Fundo semi-transparente */
+            z-index: 9999; /* Acima de tudo */
+            justify-content: center;
+            align-items: center;
+        }
+        #loadingSpinner {
+            border: 5px solid #f3f3f3; /* Cor de fundo do spinner */
+            border-top: 5px solid #4f46e5; /* Cor da parte animada */
+            border-radius: 50%; /* Torna-o circular */
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite; /* Animação de rotação */
+        }
+        /* Animação de rotação do spinner */
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Estilo para a tabela */
+        #tabela caption {
+            caption-side: top;
+            text-align: center;
+            font-size: 1.5em;
+            font-weight: bold;
+            padding: 10px;
+            background-color: #10b981; /* Cor de fundo do cabeçalho da tabela (verde) */
+            color: #fff;
+            border-top-left-radius: 0.75rem; /* Arredondamento de canto */
+            border-top-right-radius: 0.75rem; /* Arredondamento de canto */
+        }
+        .image-preview-container { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
+        .image-preview-item { position: relative; width: 80px; height: 80px; border-radius: 0.375rem; overflow: hidden; border: 1px solid #d1d5db; }
+        .image-preview-item img { width: 100%; height: 100%; object-fit: cover; }
+        .image-preview-item .remove-btn { position: absolute; top: 2px; right: 2px; background-color: rgba(0,0,0,0.6); color: white; border-radius: 9999px; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; cursor: pointer; border: none; font-size: 12px; }
+
+        /* Estilos para o output da IA (Markdown renderizado) */
+        .prose-output h3 { font-size: 1.25em; font-weight: bold; margin-top: 1em; margin-bottom: 0.5em; padding-bottom: 0.25em; border-bottom: 1px solid #e5e7eb; color: #1e3a8a; }
+        .prose-output ul { list-style-type: disc; margin-left: 1.5em; }
+        .prose-output li { margin-bottom: 0.5em; }
+        .prose-output p { margin-bottom: 1em; }
+        .prose-output strong { color: #1f2937; }
+        .prose-output { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 0.5rem; padding: 1.5rem; }
+    </style>
+</head>
+<body class="bg-gray-200">
+    <!-- Overlay de carregamento -->
+    <div id="loadingOverlay" class="flex items-center justify-center">
+        <div id="loadingSpinner"></div>
+    </div>
+    <!-- Container para alertas personalizados -->
+    <div id="alertContainer" class="fixed top-20 left-1/2 -translate-x-1/2 z-[1060] w-max max-w-[90%]"></div>
+
+    <!-- SIDEBAR -->
+      <!-- SIDEBAR -->
+    <aside id="sidebar" class="sidebar bg-gray-800 text-white h-screen fixed top-0 left-0 z-40 flex flex-col collapsed">
+        <div class="p-4 flex items-center justify-between h-16 border-b border-gray-700">
+            <h1 class="text-2xl font-bold whitespace-nowrap overflow-hidden">
+                <span class="long-title">CDM - MB</span>
+            </h1>
+            <button id="close-sidebar" class="text-gray-400 hover:text-white md:hidden text-3xl leading-none">&times;</button>
+        </div>
+        <nav class="flex-grow p-2 overflow-y-auto">
+            <ul>
+                <li>
+                    <a href="index_geral.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Página Inicial">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m0 0l7 7m-7-7v10a1 1 0 01-1 1H6a1 1 0 01-1-1v-10"></path></svg>
+                        <span class="ml-4 nav-text">Página Inicial</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="absenteismo.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Absenteísmo">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.225-1.26-.623-1.741M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 0c-2.21 0-4 2.24-4 5v2h8v-2c0-2.76-1.79-5-4-5z"></path></svg>
+                        <span class="ml-4 nav-text">Absenteísmo</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="dashboard.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Dashboard">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                        <span class="ml-4 nav-text">Dashboard</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="status_t1.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Status Máquinas">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                        <span class="ml-4 nav-text">Status 1ºT</span>
+                    </a>
+                </li>
+                 <li>
+                    <a href="status.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Status Máquinas">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                        <span class="ml-4 nav-text">Status 2ºT</span>
+                    </a>
+                </li>
+                 <li>
+                    <a href="status_t3.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Status Máquinas">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                        <span class="ml-4 nav-text">Status 3ºT</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="cadastro-detalhado.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Cadastro Máquinas/Moldes">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8H4a2 2 0 01-2-2v-4A2 2 0 014 12h2m-2 4h4m5-4h5a2 2 0 012 2v4a2 2 0 01-2 2h-5m-2-4H9m2 2h2"></path></svg>
+                        <span class="ml-4 nav-text">Cadastro Detalhado</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="analise_causa_raiz.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Análise de Causa Raiz">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                        <span class="ml-4 nav-text">Análise de Causa Raiz</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="ordens_servico.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Ordens de Serviço">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
+                        <span class="ml-4 nav-text">Ordens de Serviço</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="gestao_qualidade.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Gestão de Qualidade">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        <span class="ml-4 nav-text">Gestão de Qualidade</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="dashboard_qualidade.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Dashboard de Qualidade">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z"></path></svg>
+                        <span class="ml-4 nav-text">Dashboard de Qualidade</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="gestao_manutencao.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Gestão de Manutenção">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.096 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                        <span class="ml-4 nav-text">Gestão de Manutenção</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="gestao_estoque.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Gestão de Estoque">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"></path></svg>
+                        <span class="ml-4 nav-text">Gestão de Estoque</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="dashboard_geral_consolidado.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Dashboard Geral Consolidado">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v8m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v12a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                        <span class="ml-4 nav-text">Dashboard Geral</span>
+                    </a>
+                </li>
+            </ul>
+        </nav>
+        <div class="p-2 border-t border-gray-700">
+            <a href="#" id="settings-button" class="flex items-center p-3 rounded-lg hover:bg-gray-700" title="Configurações">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.096 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                <span class="ml-4 nav-text">Configurações</span>
+            </a>
+        </div>
+    </aside>
+    <div id="sidebar-overlay" class="fixed inset-0 bg-black bg-opacity-50 z-30 hidden md:hidden"></div>
+
+    <!-- MAIN CONTENT WRAPPER -->
+    <div class="main-content">
+        <!-- HEADER -->
+        <header class="bg-white shadow-md sticky top-0 z-20 h-16 flex items-center px-6">
+            <button id="menu-button" class="p-2 text-gray-500 rounded-md -ml-2 mr-2">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+            </button>
+            <h1 class="text-xl font-semibold text-gray-800">
+                <span class="hidden sm:inline">Ciclos Diários de Máquinas - MB</span>
+                <span class="sm:hidden">CDM - MB</span>
+            </h1>
+        </header>
+
+        <!-- PAGE CONTENT -->
+        <main class="p-4 sm:p-6 lg:p-8">
+            <h1 class="text-3xl font-bold text-gray-900 mb-6 text-center">REGISTRO DE PRODUÇÃO E QUALIDADE</h1>
+
+            <!-- Formulário de Registro de Produção/Qualidade -->
+            <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+                <h2 class="text-xl font-semibold text-gray-800 mb-4">Registrar Produção e Qualidade</h2>
+                <form id="quality-form" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <input type="hidden" id="editingQualityId">
+                    <div>
+                        <label for="dataRegistro" class="block text-sm font-medium text-gray-700 mb-1">Data e Hora</label>
+                        <input type="datetime-local" id="dataRegistro" class="form-input" required />
+                    </div>
+                    <div>
+                        <label for="ordemServico" class="block text-sm font-medium text-gray-700 mb-1">Ordem de Serviço (OS)</label>
+                        <select id="ordemServico" class="form-select" required>
+                            <option value="">Carregando OS...</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="maquina" class="block text-sm font-medium text-gray-700 mb-1">Máquina</label>
+                        <select id="maquina" class="form-select" required>
+                            <option value="">Carregando máquinas...</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="operador" class="block text-sm font-medium text-gray-700 mb-1">Operador</label>
+                        <select id="operador" class="form-select" required>
+                            <option value="">Carregando operadores...</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="quantidadeOk" class="block text-sm font-medium text-gray-700 mb-1">Quantidade Produzida (OK)</label>
+                        <input type="number" id="quantidadeOk" class="form-input" min="0" value="0" required />
+                    </div>
+                    <div>
+                        <label for="quantidadeRefugo" class="block text-sm font-medium text-gray-700 mb-1">Quantidade de Refugo</label>
+                        <input type="number" id="quantidadeRefugo" class="form-input" min="0" value="0" required />
+                    </div>
+                    <div>
+                        <label for="tipoDefeito" class="block text-sm font-medium text-gray-700 mb-1">Tipo de Defeito (se houver)</label>
+                        <select id="tipoDefeito" class="form-select">
+                            <option value="">Nenhum</option>
+                            <!-- Opções carregadas via JS -->
+                        </select>
+                    </div>
+                    <div>
+                        <label for="causaDefeito" class="block text-sm font-medium text-gray-700 mb-1">Causa do Defeito (se houver)</label>
+                        <select id="causaDefeito" class="form-select">
+                            <option value="">Não Identificada</option>
+                            <!-- Opções carregadas via JS -->
+                        </select>
+                    </div>
+                    <div class="md:col-span-2">
+                        <label for="observacoesQualidade" class="block text-sm font-medium text-gray-700 mb-1">Observações da Qualidade</label>
+                        <textarea id="observacoesQualidade" rows="3" class="form-textarea" placeholder="Detalhes sobre o refugo, ações tomadas, etc."></textarea>
+                    </div>
+                    <div class="md:col-span-2">
+                        <label for="imageUpload" class="block text-sm font-medium text-gray-700">Evidências Fotográficas (Refugo)</label>
+                        <input type="file" id="imageUpload" multiple accept="image/png, image/jpeg" class="form-input mt-1">
+                        <div id="imagePreview" class="image-preview-container"></div>
+                    </div>
+                    <div class="md:col-span-2 flex justify-center gap-3 mt-4">
+                        <button type="submit" id="submitQualityButton" class="action-button btn-add w-full md:w-auto">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            Salvar Registro
+                        </button>
+                        <button type="button" id="analyzeDefectWithAI" class="action-button btn-gemini w-full md:w-auto" disabled>
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16v4m-2-2h4m5-16v4m-2-2h4M12 21v-4m-2-2h4m5-16v4m-2-2h4m5-16v4m-2-2h4M12 21v-4m-2-2h4m5-16v4m-2-2h4"></path></svg>
+                            ✨ Analisar Defeito com IA
+                        </button>
+                        <button type="button" id="cancelEditQualityButton" class="action-button btn-secondary w-full md:w-auto hidden">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                            Cancelar Edição
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Filtro e Tabela de Registros de Qualidade -->
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h2 class="text-xl font-semibold text-gray-800 mb-4">Registros de Produção e Qualidade</h2>
+                <div class="mb-4 flex flex-col sm:flex-row items-center gap-4">
+                    <label for="filterQualityDate" class="text-sm font-medium text-gray-700 whitespace-nowrap">Filtrar por Data:</label>
+                    <input type="date" id="filterQualityDate" class="form-input w-full sm:w-auto">
+                    <label for="filterOsCode" class="text-sm font-medium text-gray-700 whitespace-nowrap">Filtrar por OS:</label>
+                    <select id="filterOsCode" class="form-select w-full sm:w-auto">
+                        <option value="">Todas as OS</option>
+                    </select>
+                    <button onclick="loadQualityRecords()" class="action-button btn-load w-full sm:w-auto text-white">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356-2A8.001 8.001 0 0020 13a8 8 0 01-8 8h-2c-.78 0-1.5-.298-2.042-.868m4.44-4.44L9 13m4-4l-4 4"></path></svg>
+                        Carregar Registros
+                    </button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table id="tabelaQualidade" class="min-w-full bg-white">
+                        <caption>REGISTROS DE QUALIDADE</caption>
+                        <thead>
+                            <tr>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-white uppercase tracking-wider">Data/Hora</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-white uppercase tracking-wider">OS</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-white uppercase tracking-wider">Máquina</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-white uppercase tracking-wider">Operador</th>
+                                <th class="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider">OK</th>
+                                <th class="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider">Refugo</th>
+                                <th class="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider">Refugo (%)</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-white uppercase tracking-wider">Defeito</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-white uppercase tracking-wider">Causa</th>
+                                <th class="px-4 py-2 text-center text-xs font-medium text-white uppercase tracking-wider">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="qualityTableBody" class="divide-y divide-gray-200">
+                            <tr><td colspan="10" class="text-center py-4 text-gray-500">Selecione uma data e clique em "Carregar Registros".</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="mt-6 text-center">
+                    <h3 class="lg:text-xl font-medium text-gray-700 mb-4">Exportar Relatório de Qualidade</h3>
+                    <div class="flex justify-center gap-4 flex-wrap items-center">
+                        <button id="export-quality-txt-btn" class="action-button btn-secondary">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                            EXPORTAR TXT
+                        </button>
+                        <button id="export-quality-pdf-btn" class="action-button btn-danger">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                            EXPORTAR PDF
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- MODAL DE ANÁLISE DE DEFEITO COM IA -->
+    <div id="modal-ai-defect-analysis" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">✨ Análise Detalhada de Defeito com IA</h2>
+                <button class="modal-close-button" data-close-modal-id="modal-ai-defect-analysis">&times;</button>
+            </div>
+            <div id="ai-defect-analysis-content" class="prose-output max-w-none max-h-[60vh] overflow-y-auto text-gray-700">
+                <!-- Conteúdo da análise da IA será inserido aqui -->
+            </div>
+            <div id="ai-defect-analysis-export-buttons" class="mt-4 pt-4 border-t flex justify-end gap-3 hidden">
+                <button onclick="exportarAnaliseDefeitoTXT()" class="action-button btn-secondary">Exportar TXT</button>
+                <button onclick="exportarAnaliseDefeitoPDF()" class="action-button btn-danger">Exportar PDF</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE CONFIGURAÇÕES (para chave API Gemini) -->
+    <div id="modal-settings" class="modal-overlay">
+        <div class="modal-content max-w-lg">
+            <div class="modal-header">
+                <h2 class="modal-title">Configurações</h2>
+                <button class="modal-close-button" data-close-modal-id="modal-settings">&times;</button>
+            </div>
+            <div>
+                <label for="gemini-api-key" class="block text-sm font-medium text-gray-700 mb-1">Sua Chave API Google Gemini</label>
+                <input type="password" id="gemini-api-key" class="w-full p-2 border rounded-md mb-2" placeholder="Cole sua chave aqui">
+                <button id="save-api-key" class="action-button btn-primary w-full mb-4">Salvar Chave</button>
+                <div class="text-center">
+                    <button id="show-tutorial" class="text-indigo-600 hover:underline text-sm">Como Obter Chave API?</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE TUTORIAL (como obter chave API) -->
+    <div id="modal-tutorial" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Como Obter sua Chave API do Google Gemini</h2>
+                <button class="modal-close-button" data-close-modal-id="modal-tutorial">&times;</button>
+            </div>
+            <div class="prose max-w-none text-gray-700">
+                <p>Para utilizar todas as funcionalidades de análise por IA, você precisará de uma Chave API do Google Gemini. O Gemini 1.5 Flash, que é necessária, oferece um nível gratuito generoso.</p>
+                <h4>Passo 1: Acesse o Google AI Studio</h4>
+                <p>Se você ainda não tem uma conta Google, precisará criar uma. Depois, acesse o Google AI Studio:</p>
+                <a href="https://aistudio.google.com/app/apikey" target="_blank" class="action-button btn-primary">Ir para o Google AI Studio &rarr;</a>
+                <h4 class="mt-4">Passo 2: Gere sua Chave API</h4>
+                <ul>
+                    <li>Procure pela opção "Get API key" ou "Criar chave API".</li>
+                    <li>Clique em "Create API key in new project".</li>
+                    <li>Siga as instruções para nomear seu projeto, se necessário.</li>
+                    <li>Após a criação, sua chave API será exibida.</li>
+                </ul>
+                <h4>Passo 3: Copie e Cole sua Chave API</h4>
+                <ul>
+                    <li>Clique no botão para copiar sua chave API.</li>
+                    <li>Volte para esta página (dentro do modal de Configurações).</li>
+                    <li>Cole a chave no campo "Sua Chave API Google Gemini".</li>
+                    <li>Clique em "Salvar".</li>
+                </ul>
+                <p class="font-semibold mt-4">Importante: Guarde sua chave API em um local seguro e não a compartilhe publicamente.</p>
+            </div>
+            <div class="mt-6 text-center">
+                <button class="action-button btn-secondary" data-close-modal-id="modal-tutorial">Entendi - Fechar Tutorial</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- SUPABASE CLIENT CONFIGURATION ---
+        const SUPABASE_URL = 'https://ranhhacbgyfpzrjdynnd.supabase.co'; // Substitua pelo seu URL Supabase
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJhbmhoYWNiZ3lmcHpyamR5bm5kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDM5MDU4OTEsImV4cCI6MjA1OTQ4MTg5MX0.Ey-X4Tz8krKHSICnYdHdBaI3q5WcRgUVwA8jOhfMr7Y'; // Substitua pela sua chave Anon pública
+        const { createClient } = supabase;
+        const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        const BUCKET_NAME = 'qualidade_evidencias'; // Nome do bucket para imagens de evidência
+
+        // --- GLOBAL VARIABLES & DOM ELEMENTS ---
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        const alertContainer = document.getElementById('alertContainer');
+
+        const qualityForm = document.getElementById('quality-form');
+        const editingQualityIdInput = document.getElementById('editingQualityId');
+        const dataRegistroInput = document.getElementById('dataRegistro');
+        const ordemServicoSelect = document.getElementById('ordemServico');
+        const maquinaSelect = document.getElementById('maquina');
+        const operadorSelect = document.getElementById('operador');
+        const quantidadeOkInput = document.getElementById('quantidadeOk');
+        const quantidadeRefugoInput = document.getElementById('quantidadeRefugo');
+        const tipoDefeitoSelect = document.getElementById('tipoDefeito');
+        const causaDefeitoSelect = document.getElementById('causaDefeito');
+        const observacoesQualidadeInput = document.getElementById('observacoesQualidade');
+        const imageUploadInput = document.getElementById('imageUpload');
+        const imagePreviewContainer = document.getElementById('imagePreview');
+        const submitQualityButton = document.getElementById('submitQualityButton');
+        const cancelEditQualityButton = document.getElementById('cancelEditQualityButton');
+        const analyzeDefectWithAIButton = document.getElementById('analyzeDefectWithAI'); // Novo botão
+
+        const filterQualityDateInput = document.getElementById('filterQualityDate');
+        const filterOsCodeSelect = document.getElementById('filterOsCode');
+        const qualityTableBody = document.getElementById('qualityTableBody');
+
+        const modalAIDefectAnalysis = document.getElementById('modal-ai-defect-analysis'); // Novo modal
+        const aiDefectAnalysisContent = document.getElementById('ai-defect-analysis-content'); // Conteúdo do modal
+        const aiDefectAnalysisExportButtons = document.getElementById('ai-defect-analysis-export-buttons'); // Botões de exportação do modal
+
+        let uploadedFiles = []; // Armazena os arquivos de imagem para upload
+        let currentImageUrls = []; // Armazena URLs de imagens existentes para edição
+        let currentAIAnalysisText = ''; // Armazena o texto da última análise de IA para exportação
+
+        // --- UTILITY FUNCTIONS ---
+        // Exibe ou oculta o overlay de carregamento
+        const showLoading = (isLoading) => { loadingOverlay.style.display = isLoading ? 'flex' : 'none'; };
+
+        // Exibe um alerta personalizado na tela
+        function showCustomAlert(message, type = 'success') {
+            const alertDiv = document.createElement('div');
+            // Define classes CSS com base no tipo de alerta (sucesso ou erro)
+            const alertClasses = type === 'error' ? 'bg-red-100 border-red-400 text-red-700' : 'bg-green-100 border-green-400 text-green-700';
+            alertDiv.className = `border px-4 py-3 rounded relative ${alertClasses}`;
+            alertDiv.innerHTML = `
+                <span>${message}</span>
+                <button class="absolute top-0 bottom-0 right-0 px-4 py-3" onclick="this.parentElement.remove()">
+                    &times;
+                </button>
+            `;
+            alertContainer.appendChild(alertDiv);
+            // Remove o alerta após 5 segundos
+            setTimeout(() => { alertDiv.remove(); }, 5000);
+        }
+
+        // Formata uma string de data/hora (ISO) para o formato brasileiro
+        function formatToBRDateTime(dateTimeString) {
+            if (!dateTimeString) return '';
+            const date = new Date(dateTimeString);
+            return date.toLocaleString('pt-BR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+        }
+
+        // --- SIDEBAR & NAVIGATION ---
+        const sidebar = document.getElementById('sidebar');
+        const menuButton = document.getElementById('menu-button');
+        const closeSidebarButton = document.getElementById('close-sidebar');
+        const sidebarOverlay = document.getElementById('sidebar-overlay');
+
+        // Adiciona listeners para controlar a abertura e fechamento da sidebar
+        menuButton.addEventListener('click', () => {
+            if (window.innerWidth < 768) {
+                sidebar.classList.remove('collapsed');
+                sidebar.classList.add('show');
+                sidebarOverlay.classList.remove('hidden');
+            } else {
+                sidebar.classList.toggle('collapsed');
+                document.querySelector('.main-content').style.marginLeft = sidebar.classList.contains('collapsed') ? 'var(--sidebar-width-collapsed)' : 'var(--sidebar-width)';
+            }
+        });
+        closeSidebarButton.addEventListener('click', () => {
+            sidebar.classList.remove('show');
+            sidebarOverlay.classList.add('hidden');
+        });
+        sidebarOverlay.addEventListener('click', () => {
+            sidebar.classList.remove('show');
+            sidebarOverlay.classList.add('hidden');
+        });
+
+        // --- MODAL HANDLING (Configurações e Tutorial da API Key) ---
+        // Função genérica para configurar a abertura de modais
+        function setupModal(modalId, openTriggerId) {
+            const modal = document.getElementById(modalId);
+            const openBtn = document.getElementById(openTriggerId);
+            if (modal && openBtn) {
+                openBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    modal.classList.add('show');
+                });
+            }
+        }
+
+        // Adiciona listener para fechar modais clicando no botão de fechar ou no overlay
+        document.body.addEventListener('click', (e) => {
+            if (e.target.dataset.closeModalId) {
+                document.getElementById(e.target.dataset.closeModalId).classList.remove('show');
+            }
+        });
+
+        // Configura os modais de configurações e tutorial
+        setupModal('modal-settings', 'settings-button');
+        setupModal('modal-tutorial', 'show-tutorial');
+
+        // Lógica para salvar a chave da API Gemini no localStorage
+        const apiKeyInput = document.getElementById('gemini-api-key');
+        const saveApiKeyBtn = document.getElementById('save-api-key');
+        if (apiKeyInput) apiKeyInput.value = localStorage.getItem('geminiApiKey') || '';
+        if (saveApiKeyBtn) saveApiKeyBtn.addEventListener('click', () => {
+            const key = apiKeyInput.value.trim();
+            if (key) {
+                localStorage.setItem('geminiApiKey', key);
+                showCustomAlert('Chave API salva com sucesso!', 'success');
+                document.getElementById('modal-settings').classList.remove('show');
+            } else {
+                showCustomAlert('Por favor, insira uma chave API válida.', 'error');
+            }
+        });
+
+        // --- IMAGE UPLOAD AND PREVIEW ---
+        imageUploadInput.addEventListener('change', (e) => {
+            uploadedFiles = Array.from(e.target.files);
+            renderImagePreviews();
+        });
+
+        function renderImagePreviews() {
+            imagePreviewContainer.innerHTML = '';
+            // Renderiza arquivos recém-selecionados
+            uploadedFiles.forEach((file, index) => {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const previewItem = document.createElement('div');
+                    previewItem.className = 'image-preview-item';
+                    previewItem.innerHTML = `<img src="${event.target.result}" alt="${file.name}"><button class="remove-btn" data-type="new" data-index="${index}">&times;</button>`;
+                    imagePreviewContainer.appendChild(previewItem);
+                };
+                reader.readAsDataURL(file);
+            });
+            // Renderiza URLs de imagens existentes (para edição)
+            currentImageUrls.forEach((url, index) => {
+                const previewItem = document.createElement('div');
+                previewItem.className = 'image-preview-item';
+                previewItem.innerHTML = `<img src="${url}" alt="Imagem existente"><button class="remove-btn" data-type="existing" data-index="${index}">&times;</button>`;
+                imagePreviewContainer.appendChild(previewItem);
+            });
+        }
+
+        imagePreviewContainer.addEventListener('click', (e) => {
+            if (e.target.classList.contains('remove-btn')) {
+                const indexToRemove = parseInt(e.target.dataset.index, 10);
+                const type = e.target.dataset.type;
+
+                if (type === 'new') {
+                    uploadedFiles.splice(indexToRemove, 1);
+                    // Atualiza o input file para refletir a remoção
+                    const newFileList = new DataTransfer();
+                    uploadedFiles.forEach(file => newFileList.items.add(file));
+                    imageUploadInput.files = newFileList.files;
+                } else if (type === 'existing') {
+                    currentImageUrls.splice(indexToRemove, 1);
+                }
+                renderImagePreviews(); // Renderiza novamente as pré-visualizações
+            }
+        });
+
+        // --- DROPDOWN LOADERS ---
+
+        // Carrega Ordens de Serviço para o select
+        async function loadOrdersOfServiceSelect() {
+            try {
+                const { data, error } = await supabaseClient.from('ordens_servico').select('id, codigo_os').order('codigo_os');
+                if (error) throw error;
+                ordemServicoSelect.innerHTML = '<option value="">Selecione uma OS</option>';
+                filterOsCodeSelect.innerHTML = '<option value="">Todas as OS</option>';
+                data.forEach(os => {
+                    const option = new Option(os.codigo_os, os.id);
+                    ordemServicoSelect.add(option.cloneNode(true)); // Clone para usar em ambos selects
+                    filterOsCodeSelect.add(option);
+                });
+            } catch (error) {
+                console.error("Erro ao carregar Ordens de Serviço:", error);
+                ordemServicoSelect.innerHTML = '<option value="">Erro ao carregar OS</option>';
+                filterOsCodeSelect.innerHTML = '<option value="">Erro ao carregar OS</option>';
+            }
+        }
+
+        // Carrega Máquinas para o select
+        async function loadMachinesSelect() {
+            try {
+                const { data, error } = await supabaseClient.from('maquinas_cadastradas').select('nome_maquina').order('nome_maquina');
+                if (error) throw error;
+                maquinaSelect.innerHTML = '<option value="">Selecione uma máquina</option>';
+                data.forEach(m => maquinaSelect.add(new Option(m.nome_maquina, m.nome_maquina)));
+            } catch (error) {
+                console.error("Erro ao carregar máquinas:", error);
+                maquinaSelect.innerHTML = '<option value="">Erro ao carregar máquinas</option>';
+            }
+        }
+
+        // Carrega Operadores para o select (filtrando por tipo 'operador')
+        async function loadOperatorsSelect() {
+            try {
+                const { data, error } = await supabaseClient.from('funcionarios').select('id, nome').eq('tipo', 'operador').order('nome');
+                if (error) throw error;
+                operadorSelect.innerHTML = '<option value="">Selecione um operador</option>';
+                data.forEach(op => operadorSelect.add(new Option(op.nome, op.id)));
+            } catch (error) {
+                console.error("Erro ao carregar operadores:", error);
+                operadorSelect.innerHTML = '<option value="">Erro ao carregar operadores</option>';
+            }
+        }
+
+        // Carrega Tipos de Defeito para o select
+        async function loadDefectTypesSelect() {
+            try {
+                const { data, error } = await supabaseClient.from('tipos_defeito').select('nome_defeito').order('nome_defeito');
+                if (error) throw error;
+                tipoDefeitoSelect.innerHTML = '<option value="">Nenhum</option>';
+                data.forEach(td => tipoDefeitoSelect.add(new Option(td.nome_defeito, td.nome_defeito)));
+            } catch (error) {
+                console.error("Erro ao carregar tipos de defeito:", error);
+                tipoDefeitoSelect.innerHTML = '<option value="">Erro ao carregar</option>';
+            }
+        }
+
+        // Carrega Causas de Defeito para o select
+        async function loadDefectCausesSelect() {
+            try {
+                const { data, error } = await supabaseClient.from('causas_defeito').select('nome_causa').order('nome_causa');
+                if (error) throw error;
+                causaDefeitoSelect.innerHTML = '<option value="">Não Identificada</option>';
+                data.forEach(cd => causaDefeitoSelect.add(new Option(cd.nome_causa, cd.nome_causa)));
+            } catch (error) {
+                console.error("Erro ao carregar causas de defeito:", error);
+                causaDefeitoSelect.innerHTML = '<option value="">Erro ao carregar</option>';
+            }
+        }
+
+        // --- CORE LOGIC: QUALITY RECORDS ---
+
+        // Carrega os registros de qualidade do Supabase e os exibe na tabela
+        async function loadQualityRecords() {
+            const selectedDate = filterQualityDateInput.value;
+            const selectedOsId = filterOsCodeSelect.value;
+
+            showLoading(true);
+            qualityTableBody.innerHTML = '<tr><td colspan="10" class="text-center py-4 text-gray-500">Carregando...</td></tr>';
+
+            try {
+                let query = supabaseClient.from('producao_qualidade').select(`
+                    id,
+                    data_registro,
+                    quantidade_ok,
+                    quantidade_refugo,
+                    observacoes_qualidade,
+                    imagens_urls,
+                    ordem_servico_id,
+                    maquina,
+                    operador_id,
+                    tipo_defeito,
+                    causa_defeito,
+                    ordens_servico (codigo_os),
+                    funcionarios (nome)
+                `).order('data_registro', { ascending: false });
+
+                if (selectedDate) {
+                    query = query.gte('data_registro', `${selectedDate}T00:00:00`).lte('data_registro', `${selectedDate}T23:59:59`);
+                }
+                if (selectedOsId) {
+                    query = query.eq('ordem_servico_id', selectedOsId);
+                }
+
+                const { data, error } = await query;
+
+                if (error) throw error;
+
+                qualityTableBody.innerHTML = ''; // Limpa a tabela antes de adicionar os novos dados
+
+                if (data && data.length > 0) {
+                    data.forEach(record => addQualityRowToTable(record));
+                } else {
+                    qualityTableBody.innerHTML = '<tr><td colspan="10" class="text-center py-4 text-gray-500">Nenhum registro de qualidade encontrado para o filtro.</td></tr>';
+                }
+            } catch (error) {
+                console.error("Erro ao carregar registros de qualidade:", error);
+                showCustomAlert(`Erro ao carregar registros: ${error.message}`, "error");
+                qualityTableBody.innerHTML = '<tr><td colspan="10" class="text-center py-4 text-red-500">Erro ao carregar.</td></tr>';
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Adiciona uma linha à tabela de registros de qualidade
+        function addQualityRowToTable(record) {
+            const row = qualityTableBody.insertRow();
+            row.setAttribute('data-id', record.id);
+
+            const totalProduzido = record.quantidade_ok + record.quantidade_refugo;
+            const refugoPercent = totalProduzido > 0 ? ((record.quantidade_refugo / totalProduzido) * 100).toFixed(2) : '0.00';
+
+            row.innerHTML = `
+                <td class="px-4 py-2 text-sm text-gray-700">${formatToBRDateTime(record.data_registro)}</td>
+                <td class="px-4 py-2 text-sm text-gray-700">${record.ordens_servico ? record.ordens_servico.codigo_os : 'N/A'}</td>
+                <td class="px-4 py-2 text-sm text-gray-700">${record.maquina}</td>
+                <td class="px-4 py-2 text-sm text-gray-700">${record.funcionarios ? record.funcionarios.nome : 'N/A'}</td>
+                <td class="px-4 py-2 text-sm text-gray-700 text-center">${record.quantidade_ok}</td>
+                <td class="px-4 py-2 text-sm text-gray-700 text-center">${record.quantidade_refugo}</td>
+                <td class="px-4 py-2 text-sm text-gray-700 text-center">${refugoPercent}%</td>
+                <td class="px-4 py-2 text-sm text-gray-700">${record.tipo_defeito || 'N/A'}</td>
+                <td class="px-4 py-2 text-sm text-gray-700">${record.causa_defeito || 'N/A'}</td>
+                <td class="px-4 py-2 text-sm text-center whitespace-nowrap">
+                    <button onclick="editQualityRecord('${record.id}')" class="edit-button action-button btn-update px-2 py-1 text-xs">Editar</button>
+                    <button onclick="removeQualityRecord('${record.id}', '${record.imagens_urls ? record.imagens_urls.join(',') : ''}')" class="remove-button action-button btn-danger px-2 py-1 text-xs">Remover</button>
+                </td>
+            `;
+        }
+
+        // Preenche o formulário para edição de um registro de qualidade existente
+        async function editQualityRecord(recordId) {
+            showLoading(true);
+            try {
+                const { data: record, error } = await supabaseClient
+                    .from('producao_qualidade')
+                    .select('*')
+                    .eq('id', recordId)
+                    .single();
+
+                if (error) throw error;
+
+                editingQualityIdInput.value = record.id;
+                dataRegistroInput.value = record.data_registro.substring(0, 16); // Formato para datetime-local
+                ordemServicoSelect.value = record.ordem_servico_id;
+                maquinaSelect.value = record.maquina;
+                operadorSelect.value = record.operador_id;
+                quantidadeOkInput.value = record.quantidade_ok;
+                quantidadeRefugoInput.value = record.quantidade_refugo;
+                tipoDefeitoSelect.value = record.tipo_defeito || '';
+                causaDefeitoSelect.value = record.causa_defeito || '';
+                observacoesQualidadeInput.value = record.observacoes_qualidade || '';
+
+                // Lida com as imagens existentes
+                currentImageUrls = record.imagens_urls || [];
+                uploadedFiles = []; // Limpa arquivos novos ao editar
+                renderImagePreviews();
+
+                submitQualityButton.textContent = 'Atualizar Registro';
+                submitQualityButton.classList.replace('btn-add', 'btn-update');
+                cancelEditQualityButton.classList.remove('hidden');
+                analyzeDefectWithAIButton.disabled = false; // Habilita o botão de IA ao editar
+                qualityForm.scrollIntoView({ behavior: 'smooth' }); // Rola para o formulário
+            } catch (err) {
+                console.error("Erro ao buscar registro para edição:", err);
+                showCustomAlert("Não foi possível carregar os dados do registro para edição.", "error");
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Cancela a edição e reseta o formulário
+        function cancelEdit() {
+            qualityForm.reset();
+            editingQualityIdInput.value = '';
+            submitQualityButton.textContent = 'Salvar Registro';
+            submitQualityButton.classList.replace('btn-update', 'btn-add');
+            cancelEditQualityButton.classList.add('hidden');
+            analyzeDefectWithAIButton.disabled = true; // Desabilita o botão de IA
+            dataRegistroInput.value = new Date().toISOString().substring(0, 16); // Data/hora atual
+            uploadedFiles = [];
+            currentImageUrls = [];
+            imageUploadInput.value = ''; // Limpa o input de arquivo
+            imagePreviewContainer.innerHTML = ''; // Limpa as pré-visualizações
+        }
+
+        // Lida com o envio do formulário (criação ou atualização de registro de qualidade)
+        async function handleQualityFormSubmit(event) {
+            event.preventDefault();
+            showLoading(true);
+
+            const recordData = {
+                data_registro: dataRegistroInput.value,
+                ordem_servico_id: ordemServicoSelect.value,
+                maquina: maquinaSelect.value,
+                operador_id: operadorSelect.value,
+                quantidade_ok: parseInt(quantidadeOkInput.value),
+                quantidade_refugo: parseInt(quantidadeRefugoInput.value),
+                tipo_defeito: tipoDefeitoSelect.value || null,
+                causa_defeito: causaDefeitoSelect.value || null,
+                observacoes_qualidade: observacoesQualidadeInput.value.trim() || null,
+                imagens_urls: currentImageUrls // Começa com as URLs existentes
+            };
+
+            // Validação básica
+            if (!recordData.data_registro || !recordData.ordem_servico_id || !recordData.maquina || !recordData.operador_id || isNaN(recordData.quantidade_ok) || isNaN(recordData.quantidade_refugo)) {
+                showCustomAlert('Por favor, preencha todos os campos obrigatórios (Data/Hora, OS, Máquina, Operador, Qtd OK, Qtd Refugo).', 'error');
+                showLoading(false);
+                return;
+            }
+
+            try {
+                const editingId = editingQualityIdInput.value;
+                let error;
+                let recordIdToUpdate = editingId;
+
+                // Se for um novo registro, insere primeiro para obter o ID para upload de imagens
+                if (!editingId) {
+                    const { data, error: insertError } = await supabaseClient.from('producao_qualidade').insert([recordData]).select().single();
+                    if (insertError) throw insertError;
+                    recordIdToUpdate = data.id;
+                    recordData.imagens_urls = []; // Limpa para preencher com as novas URLs
+                }
+
+                // Upload de novas imagens
+                const newImageUrls = [];
+                for (const file of uploadedFiles) {
+                    const filePath = `qualidade/${recordIdToUpdate}/${Date.now()}-${file.name}`;
+                    const { error: uploadError } = await supabaseClient.storage.from(BUCKET_NAME).upload(filePath, file);
+                    if (uploadError) throw new Error(`Falha no upload da imagem ${file.name}: ${uploadError.message}`);
+                    
+                    const { data: urlData } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(filePath);
+                    newImageUrls.push(urlData.publicUrl);
+                }
+
+                // Combina as URLs existentes com as novas
+                recordData.imagens_urls = [...currentImageUrls, ...newImageUrls];
+
+                if (editingId) {
+                    // Atualiza o registro existente com as novas URLs de imagem
+                    ({ error } = await supabaseClient.from('producao_qualidade').update(recordData).eq('id', editingId));
+                } else {
+                    // Atualiza o registro recém-criado com as URLs de imagem (se houver)
+                    ({ error } = await supabaseClient.from('producao_qualidade').update(recordData).eq('id', recordIdToUpdate));
+                }
+
+                if (error) throw error;
+
+                showCustomAlert(`Registro de qualidade ${editingId ? 'atualizado' : 'salvo'} com sucesso!`, 'success');
+                cancelEdit(); // Reseta o formulário
+                await loadQualityRecords(); // Recarrega a tabela
+            } catch (err) {
+                console.error("Erro ao salvar registro de qualidade:", err);
+                showCustomAlert(`Erro ao salvar registro: ${err.message}`, "error");
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Remove um registro de qualidade e suas imagens associadas
+        async function removeQualityRecord(recordId, imageUrlsString) {
+            if (!confirm('Tem certeza que deseja remover este registro de qualidade? Esta ação também removerá as imagens associadas.')) {
+                return;
+            }
+            showLoading(true);
+            try {
+                // Remove as imagens do storage primeiro
+                const imageUrls = imageUrlsString ? imageUrlsString.split(',') : [];
+                for (const url of imageUrls) {
+                    const path = url.split(BUCKET_NAME + '/public/')[1]; // Extrai o caminho no bucket
+                    if (path) {
+                        const { error: deleteFileError } = await supabaseClient.storage.from(BUCKET_NAME).remove([path]);
+                        if (deleteFileError) console.warn(`Falha ao remover arquivo do storage: ${path}`, deleteFileError);
+                    }
+                }
+
+                // Remove o registro do banco de dados
+                const { error } = await supabaseClient.from('producao_qualidade').delete().eq('id', recordId);
+                if (error) throw error;
+
+                showCustomAlert('Registro de qualidade removido!', 'success');
+                await loadQualityRecords(); // Recarrega a tabela
+            } catch (error) {
+                console.error("Erro ao remover registro de qualidade:", error);
+                showCustomAlert(`Erro ao remover registro: ${error.message}`, "error");
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // --- GEMINI AI INTEGRATION FOR DEFECT ANALYSIS ---
+        analyzeDefectWithAIButton.addEventListener('click', async () => {
+            // Coleta os dados do formulário para enviar ao Gemini
+            const dataRegistro = dataRegistroInput.value;
+            const ordemServicoCodigo = ordemServicoSelect.options[ordemServicoSelect.selectedIndex].text;
+            const maquina = maquinaSelect.value;
+            const operadorNome = operadorSelect.options[operadorSelect.selectedIndex].text;
+            const quantidadeOk = quantidadeOkInput.value;
+            const quantidadeRefugo = quantidadeRefugoInput.value;
+            const tipoDefeito = tipoDefeitoSelect.value || 'Não especificado';
+            const causaDefeito = causaDefeitoSelect.value || 'Não identificada';
+            const observacoes = observacoesQualidadeInput.value.trim() || 'Nenhuma';
+            const imageUrls = currentImageUrls; // Imagens já carregadas/existentes
+
+            if (quantidadeRefugo === '0' && tipoDefeito === 'Não especificado' && causaDefeito === 'Não identificada') {
+                showCustomAlert('Não há refugo ou defeito especificado para analisar.', 'info');
+                return;
+            }
+
+            modalAIDefectAnalysis.classList.add('show');
+            aiDefectAnalysisContent.innerHTML = '<p class="text-center text-gray-500"><svg class="animate-spin h-8 w-8 text-blue-500 mx-auto mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Analisando defeito com IA... Por favor, aguarde.</p>';
+            aiDefectAnalysisExportButtons.classList.add('hidden');
+
+            const prompt = `Você é um engenheiro de qualidade experiente em injeção plástica. Analise o seguinte registro de qualidade:\n\n` +
+                           `- **Data e Hora:** ${formatToBRDateTime(dataRegistro)}\n` +
+                           `- **Ordem de Serviço:** ${ordemServicoCodigo}\n` +
+                           `- **Máquina:** ${maquina}\n` +
+                           `- **Operador:** ${operadorNome}\n` +
+                           `- **Quantidade OK:** ${quantidadeOk}\n` +
+                           `- **Quantidade Refugo:** ${quantidadeRefugo}\n` +
+                           `- **Tipo de Defeito:** ${tipoDefeito}\n` +
+                           `- **Causa Aparente do Defeito:** ${causaDefeito}\n` +
+                           `- **Observações do Registro:** ${observacoes}\n` +
+                           `- **URLs de Imagens (se houver):** ${imageUrls.length > 0 ? imageUrls.join(', ') : 'Nenhuma'}\n\n` +
+                           `Com base nessas informações, forneça uma análise detalhada em português, incluindo:\n` +
+                           `1.  **Diagnóstico Aprofundado:** Qual a sua avaliação sobre a natureza do defeito e o que pode estar contribuindo para ele?\n` +
+                           `2.  **Possíveis Causas Raiz Adicionais:** Considere outros fatores que podem não ter sido explicitamente mencionados, mas são comuns para este tipo de defeito em injeção plástica.\n` +
+                           `3.  **Ações Corretivas e Preventivas Sugeridas:** Proponha passos práticos para corrigir o problema e evitar sua recorrência.\n` +
+                           `4.  **Impacto Potencial:** Breve comentário sobre o impacto na produção ou no custo se não for resolvido.\n\n` +
+                           `Formate sua resposta usando títulos em negrito e listas para facilitar a leitura.`;
+
+            try {
+                const apiKey = localStorage.getItem('geminiApiKey');
+                if (!apiKey) {
+                    throw new Error('Chave API do Gemini não encontrada. Configure-a nas Configurações.');
+                }
+
+                const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }] };
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (!response.ok) {
+                    const errorBody = await response.json();
+                    throw new Error(`HTTP error! status: ${response.status} - ${errorBody.error.message}`);
+                }
+                const result = await response.json();
+                if (result.candidates && result.candidates.length > 0) {
+                    const text = result.candidates[0].content.parts[0].text;
+                    currentAIAnalysisText = text; // Salva para exportação
+                    aiDefectAnalysisContent.innerHTML = marked.parse(text); // Renderiza Markdown para HTML
+                    aiDefectAnalysisExportButtons.classList.remove('hidden');
+                } else {
+                    throw new Error("Resposta da API inválida ou sem conteúdo.");
+                }
+            } catch (error) {
+                console.error('Erro na chamada da API Gemini para análise de defeito:', error);
+                aiDefectAnalysisContent.innerHTML = `<p class="text-red-500">Ocorreu um erro ao buscar a análise da IA. (Erro: ${error.message})</p>`;
+            } finally {
+                showLoading(false);
+            }
+        });
+
+        // --- EXPORT FUNCTIONS ---
+
+        // Exporta a tabela de registros de qualidade para TXT
+        function exportQualityTableToTxt() {
+            const rows = document.querySelectorAll("#qualityTableBody tr");
+            if (rows.length === 0 || (rows.length === 1 && rows[0].cells[0].textContent.includes("Nenhum registro"))) {
+                showCustomAlert("Não há dados na tabela para exportar.", "error");
+                return;
+            }
+
+            let textContent = `RELATÓRIO DE PRODUÇÃO E QUALIDADE\nData de Filtro: ${filterQualityDateInput.value || 'Todas as Datas'}\nOS de Filtro: ${filterOsCodeSelect.options[filterOsCodeSelect.selectedIndex].text}\n\n`;
+            textContent += `Data/Hora           | OS       | Máquina  | Operador    | OK   | Refugo | Refugo(%) | Defeito       | Causa         | Obs\n`;
+            textContent += `--------------------|----------|----------|-------------|------|--------|-----------|---------------|---------------|---------------------------------------------------\n`;
+
+            rows.forEach((row) => {
+                const cells = row.querySelectorAll("td");
+                if (cells.length > 1) {
+                    textContent += `${cells[0].innerText.padEnd(19)} | ${cells[1].innerText.padEnd(8)} | ${cells[2].innerText.padEnd(8)} | ${cells[3].innerText.padEnd(11)} | ${cells[4].innerText.padEnd(4)} | ${cells[5].innerText.padEnd(6)} | ${cells[6].innerText.padEnd(9)} | ${cells[7].innerText.padEnd(13)} | ${cells[8].innerText.padEnd(13)} | ${cells[9].innerText.replace(/\s+/g, ' ').trim()}\n`;
+                }
+            });
+
+            const blob = new Blob([textContent], { type: "text/plain;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = `relatorio_qualidade_${new Date().toISOString().split('T')[0]}.txt`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            showCustomAlert('Relatório TXT gerado com sucesso!', 'success');
+        }
+
+        // Exporta a tabela de registros de qualidade para PDF
+        function exportQualityTableToPdf() {
+            const rows = document.querySelectorAll("#qualityTableBody tr");
+            if (rows.length === 0 || (rows.length === 1 && rows[0].cells[0].textContent.includes("Nenhum registro"))) {
+                showCustomAlert("Não há dados na tabela para exportar.", "error");
+                return;
+            }
+
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF('landscape'); // Orientação paisagem
+
+            doc.autoTable({
+                html: '#tabelaQualidade', // ID da sua tabela HTML
+                startY: 20,
+                theme: 'grid',
+                headStyles: {
+                    fillColor: [16, 185, 129], // Cor do cabeçalho (verde)
+                    textColor: [255, 255, 255],
+                    fontStyle: 'bold'
+                },
+                styles: {
+                    fontSize: 7, // Fonte menor para caber mais colunas
+                    cellPadding: 2
+                },
+                columnStyles: {
+                    9: { cellWidth: 20 } // Ajusta a largura da coluna de ações
+                },
+                didParseCell: function (data) {
+                    // Remove os botões da coluna "Ações" para o PDF
+                    if (data.column.index === 9 && data.cell.raw instanceof HTMLElement) {
+                        data.cell.text = []; // Limpa o texto da célula
+                    }
+                },
+                didDrawPage: function (data) {
+                    doc.setFontSize(12);
+                    doc.setTextColor(40);
+                    doc.text(`Relatório de Produção e Qualidade - ${new Date().toISOString().split('T')[0]}`, data.settings.margin.left, 15);
+                }
+            });
+
+            doc.save(`relatorio_qualidade_${new Date().toISOString().split('T')[0]}.pdf`);
+            showCustomAlert('Relatório PDF gerado com sucesso!', 'success');
+        }
+
+        // Exporta a análise de defeito da IA para TXT
+        function exportarAnaliseDefeitoTXT() {
+            if (!currentAIAnalysisText) {
+                showCustomAlert("Não há análise da IA para exportar.", "error");
+                return;
+            }
+            let fileContent = `ANÁLISE DE DEFEITO COM IA\nData: ${formatToBRDateTime(dataRegistroInput.value)}\n\n=========================================\n\n${currentAIAnalysisText}`;
+            const blob = new Blob([fileContent], { type: "text/plain;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = `analise_defeito_ia_${new Date().toISOString().split('T')[0]}.txt`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            showCustomAlert('Análise de Defeito TXT gerada com sucesso!', 'success');
+        }
+
+        // Exporta a análise de defeito da IA para PDF
+        function exportarAnaliseDefeitoPDF() {
+            if (!currentAIAnalysisText) {
+                showCustomAlert("Não há análise da IA para exportar.", "error");
+                return;
+            }
+
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+            const pageHeight = doc.internal.pageSize.getHeight();
+            const pageWidth = doc.internal.pageSize.getWidth();
+            const margin = 18;
+            let cursorY = margin;
+
+            function addHeader(title) {
+                doc.setFontSize(18);
+                doc.setFont(undefined, 'bold');
+                doc.text(title, margin, cursorY, { maxWidth: pageWidth - margin * 2, align: 'left' });
+                cursorY += 12;
+                doc.setFontSize(12);
+                doc.setFont(undefined, 'normal');
+                doc.text(`Data do Registro: ${formatToBRDateTime(dataRegistroInput.value)}`, margin, cursorY, { maxWidth: pageWidth - margin * 2, align: 'left' });
+                cursorY += 8;
+                doc.setLineWidth(0.3);
+                doc.setDrawColor(180);
+                doc.line(margin, cursorY, pageWidth - margin, cursorY);
+                cursorY += 14;
+            }
+
+            addHeader('Análise Detalhada de Defeito com IA');
+
+            // Renderiza o Markdown em HTML e então processa o HTML para PDF
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = marked.parse(currentAIAnalysisText);
+
+            function insertText(text, fontStyle = 'normal', fontSize = 11, offsetX = margin, spacing = 6) {
+                doc.setFont(undefined, fontStyle);
+                doc.setFontSize(fontSize);
+                const maxWidth = pageWidth - offsetX - margin;
+                const splitText = doc.splitTextToSize(text, maxWidth);
+                for (const subLine of splitText) {
+                    if (cursorY + spacing > pageHeight - margin) {
+                        doc.addPage();
+                        cursorY = margin;
+                        addHeader('Análise Detalhada de Defeito com IA');
+                        doc.setFont(undefined, fontStyle);
+                        doc.setFontSize(fontSize);
+                    }
+                    doc.text(subLine, offsetX, cursorY, { maxWidth, align: 'justify' });
+                    cursorY += spacing;
+                }
+            }
+            
+            let globalOlIndex = 1; // Resetar para cada nova análise
+            function parseNodes(nodes, listLevel = 0) {
+                nodes.forEach(node => {
+                    if (node.nodeType === Node.ELEMENT_NODE) {
+                        switch (node.nodeName) {
+                            case 'H1':
+                            case 'H2':
+                            case 'H3':
+                                insertText(node.textContent.trim(), 'bold', 15, margin, 10);
+                                cursorY += 6;
+                                break;
+                            case 'H4':
+                                insertText(node.textContent.trim(), 'bold', 12, margin, 8);
+                                cursorY += 6;
+                                break;
+                            case 'UL':
+                                node.childNodes.forEach(li => {
+                                    if (li.nodeName === 'LI') {
+                                        insertText('• ' + li.textContent.trim(), 'normal', 10, margin + 8 + listLevel * 6, 6);
+                                    }
+                                });
+                                cursorY += 2;
+                                break;
+                            case 'OL':
+                                node.childNodes.forEach(li => {
+                                    if (li.nodeName === 'LI') {
+                                        insertText(`${globalOlIndex}. ` + li.textContent.trim(), 'bold', 10, margin + 4);
+                                        globalOlIndex++;
+                                    }
+                                });
+                                cursorY += 2;
+                                break;
+                            case 'P':
+                                if (node.innerHTML.includes('<strong>')) {
+                                    node.childNodes.forEach(cn => {
+                                        if (cn.nodeName === 'STRONG') {
+                                            insertText(cn.textContent.trim(), 'bold', 12, margin, 6);
+                                        } else if (cn.nodeType === Node.TEXT_NODE) {
+                                            insertText(cn.textContent.trim(), 'normal', 11, margin, 6);
+                                        }
+                                    });
+                                } else {
+                                    insertText(node.textContent.trim(), 'normal', 11, margin, 6);
+                                }
+                                cursorY += 2;
+                                break;
+                            case 'STRONG':
+                                insertText(node.textContent.trim(), 'bold', 12, margin, 6);
+                                break;
+                            case 'BR':
+                                cursorY += 3;
+                                break;
+                            default:
+                                insertText(node.textContent.trim(), 'normal', 12, margin, 6);
+                        }
+                    } else if (node.nodeType === Node.TEXT_NODE) {
+                        if (node.textContent.trim() !== '') {
+                            insertText(node.textContent.trim(), 'normal', 11, margin, 6);
+                        }
+                    }
+                });
+            }
+
+            parseNodes(Array.from(tempDiv.childNodes));
+
+            doc.save(`analise_defeito_ia_${new Date().toISOString().split('T')[0]}.pdf`);
+            showCustomAlert('Análise de Defeito PDF gerada com sucesso!', 'success');
+        }
+
+        // --- INITIALIZATION ---
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Define a data/hora atual e o filtro de data para hoje por padrão
+            const now = new Date();
+            dataRegistroInput.value = now.toISOString().substring(0, 16);
+            filterQualityDateInput.value = now.toISOString().split('T')[0];
+
+            // Carrega os dados para os dropdowns e a tabela
+            showLoading(true);
+            await Promise.all([
+                loadOrdersOfServiceSelect(),
+                loadMachinesSelect(),
+                loadOperatorsSelect(),
+                loadDefectTypesSelect(),
+                loadDefectCausesSelect()
+            ]);
+            await loadQualityRecords(); // Carrega os registros iniciais
+            showLoading(false);
+
+            // Adiciona listeners para os botões e formulários
+            qualityForm.addEventListener('submit', handleQualityFormSubmit);
+            cancelEditQualityButton.addEventListener('click', cancelEdit);
+            filterQualityDateInput.addEventListener('change', loadQualityRecords); // Recarrega a tabela ao mudar a data do filtro
+            filterOsCodeSelect.addEventListener('change', loadQualityRecords); // Recarrega a tabela ao mudar a OS do filtro
+
+            document.getElementById('export-quality-txt-btn').addEventListener('click', exportQualityTableToTxt);
+            document.getElementById('export-quality-pdf-btn').addEventListener('click', exportQualityTableToPdf);
+
+            // Habilita/desabilita o botão de IA com base na edição
+            analyzeDefectWithAIButton.disabled = !editingQualityIdInput.value;
+
+            // Adiciona listener para o novo botão de análise de IA
+            analyzeDefectWithAIButton.addEventListener('click', analyzeDefectWithAI);
+        });
+    </script>
+</body>
+</html>
