@@ -199,7 +199,7 @@
         <nav class="flex-grow p-2 overflow-y-auto">
             <ul>
                 <li>
-                    <a href="index_geral.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Página Inicial">
+                    <a href="index.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Página Inicial">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m0 0l7 7m-7-7v10a1 1 0 01-1 1H6a1 1 0 01-1-1v-10"></path></svg>
                         <span class="ml-4 nav-text">Página Inicial</span>
                     </a>
@@ -515,7 +515,7 @@
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJhbmhoYWNiZ3lmcHpyamR5bm5kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDM5MDU4OTEsImV4cCI6MjA1OTQ4MTg5MX0.Ey-X4Tz8krKHSICnYdHdBaI3q5WcRgUVwA8jOhfMr7Y'; // Substitua pela sua chave Anon pública
         const { createClient } = supabase;
         const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        const BUCKET_NAME = 'qualidade_evidencias'; // Nome do bucket para imagens de evidência
+        const BUCKET_NAME = 'qualidade-evidencias'; // Nome do bucket para imagens de evidência
 
         // --- GLOBAL VARIABLES & DOM ELEMENTS ---
         const loadingOverlay = document.getElementById('loadingOverlay');

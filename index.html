@@ -246,7 +246,7 @@
         <nav class="flex-grow p-2 overflow-y-auto">
             <ul>
                 <li>
-                    <a href="index_geral.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Página Inicial">
+                    <a href="index.html" class="flex items-center p-3 my-1 rounded-lg hover:bg-gray-700" title="Página Inicial">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m0 0l7 7m-7-7v10a1 1 0 01-1 1H6a1 1 0 01-1-1v-10"></path></svg>
                         <span class="ml-4 nav-text">Página Inicial</span>
                     </a>
@@ -489,9 +489,9 @@
 
         // Determina o turno com base na hora do dia
         function getShiftFromHour(hour) {
-            if (hour >= 6 && hour < 14) return 't1'; // 6:00 às 13:59
-            if (hour >= 14 && hour < 22) return 't2'; // 14:00 às 21:59
-            return 't3'; // 22:00 às 5:59
+            if (hour >= 5 && hour < 14) return 't1'; // 6:00 às 13:59
+            if (hour >= 13 && hour < 24) return 't2'; // 14:00 às 23:59
+            return 't3'; // 23:59 às 5:59
         }
 
         // --- SIDEBAR & NAVIGATION ---
@@ -697,8 +697,8 @@
                 // --- Shift-specific Notifications ---
                 ['t1', 't2', 't3'].forEach(shiftKey => {
                     // Check if status records are missing for the current part of the day
-                    const shiftStartHour = shiftKey === 't1' ? 6 : (shiftKey === 't2' ? 14 : 22);
-                    const shiftEndHour = shiftKey === 't1' ? 14 : (shiftKey === 't2' ? 22 : 6); // End hour is exclusive
+                    const shiftStartHour = shiftKey === 't1' ? 5 : (shiftKey === 't2' ? 14 : 23);
+                    const shiftEndHour = shiftKey === 't1' ? 13 : (shiftKey === 't2' ? 23 : 6); // End hour is exclusive
 
                     let isShiftActive = false;
                     if (shiftKey === 't3') { // T3 spans across midnight
